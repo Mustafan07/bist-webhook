@@ -2,4 +2,4 @@ flask
 requests
 pandas
 pandas_ta
-tvdatafeed
+tvdatafeed==0.3.1
