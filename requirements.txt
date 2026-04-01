@@ -1,6 +1,5 @@
 flask
 requests
-yfinance
 pandas
 pandas_ta
-pytz
+tvdatafeed
