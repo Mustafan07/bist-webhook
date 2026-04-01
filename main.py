@@ -2,7 +2,8 @@ from flask import Flask, request
 import requests
 import pandas as pd
 import pandas_ta as ta
-import yfinance as yf
+import urllib.request
+import json
 import threading
 import time
 
@@ -42,15 +43,25 @@ def send_telegram(message):
 
 def get_signals(ticker):
     try:
-        symbol = f"{ticker}.IS"
-        df = yf.download(symbol, period="3mo", interval="1d",
-                        progress=False, auto_adjust=True)
-        if df is None or len(df) < 20:
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}.IS?interval=1d&range=3mo"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.loads(r.read())
+        result = data["chart"]["result"][0]
+        closes = result["indicators"]["quote"][0]["close"]
+        highs  = result["indicators"]["quote"][0]["high"]
+        lows   = result["indicators"]["quote"][0]["low"]
+        vols   = result["indicators"]["quote"][0]["volume"]
+        closes = [x for x in closes if x is not None]
+        highs  = [x for x in highs  if x is not None]
+        lows   = [x for x in lows   if x is not None]
+        vols   = [x for x in vols   if x is not None]
+        if len(closes) < 20:
             return None
-        close  = df["Close"].squeeze()
-        high   = df["High"].squeeze()
-        low    = df["Low"].squeeze()
-        volume = df["Volume"].squeeze()
+        close  = pd.Series(closes)
+        high   = pd.Series(highs)
+        low    = pd.Series(lows)
+        volume = pd.Series(vols)
 
         e21  = ta.ema(close, 21)
         e50  = ta.ema(close, 50)
@@ -83,8 +94,7 @@ def get_signals(ticker):
                  float(rsi.iloc[i]) > 50 and float(k.iloc[i]) > float(d.iloc[i]) and
                  float(volume.iloc[i]) > float(vol_avg20.iloc[i]))
         bot   = float(rsi.iloc[i]) < 38 and float(k.iloc[i]) < 28 and k_cross_over
-        dip   = (rsi_cross_30 and
-                 float(mom.iloc[i]) > -10 and
+        dip   = (rsi_cross_30 and float(mom.iloc[i]) > -10 and
                  float(stochrsi_d.iloc[i]) < 40 and
                  float(volume.iloc[i]) > float(vol_avg10.iloc[i]) and
                  float(adx.iloc[i]) > 14)
