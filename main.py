@@ -12,25 +12,24 @@ TELEGRAM_TOKEN = "8760124700:AAG1UG8FpfETC3wBhvleqMaIpXi8FUvek8A"
 CHAT_ID = "635329910"
 
 BIST_HISSELER = [
-    "ACSEL","ADEL","ADESE","AEFES","AFYON","AGESA","AGHOL","AKBNK","AKCNS",
-    "AKFEN","AKGRT","AKSA","AKSEN","ALARK","ALBRK","ALFAS","ALKIM","ALVES",
-    "ANELE","ARCLK","ARDYZ","ARENA","ARSAN","ASELS","ASTOR","AYCES","AYEN",
-    "AYGAZ","BAGFS","BALSU","BANVT","BERA","BIMAS","BINBN","BINHO","BIZIM",
-    "BJKAS","BORSK","BOSSA","BRISA","BRSAN","BSOKE","BTCIM","BUCIM","BURCE",
-    "CCOLA","CELHA","CEMAS","CEMTS","CIMSA","CLEBI","COFAZ","CWENE","DOAS",
-    "DOHOL","ECILC","ECZYT","EGEEN","EGGUB","EKGYO","EMKEL","ENJSA","ENKAI",
-    "ERGL","ETILR","FADE","FENER","FROTO","GARFA","GEDZA","GEREL","GESAN",
-    "GLYHO","GOLTS","GOODY","GSDHO","GSRAY","GUBRF","HALKB","HATEK","HEKTS",
-    "HOROZ","HTTBT","IHAAS","IHLAS","INDES","INFO","INVEO","ISGYO","JANTS",
-    "KAREL","KARSN","KARTN","KCAER","KCHOL","KENT","KERVT","KGYO","KIMMR",
-    "KLNMA","KMPUR","KONYA","KORDS","KOZAA","KOZAL","KRDMD","KTLEV","KUTPO",
-    "LIDER","LOGO","MAALT","MAKIM","MANAS","MAVI","MEGAP","MERCN","MERIT",
-    "MERKO","MGROS","MPARK","MRSHL","MUTLU","NETAS","NTHOL","NTTUR","NUHCM",
-    "ODAS","OTKAR","OYAKC","PETKM","PETUN","PGSUS","PKART","POLHO","PRKAB",
-    "PTOFS","QNBFB","RAYSG","RGYAS","SAHOL","SANEL","SANFM","SARKY","SASA",
-    "SISE","SKBNK","SOKM","TATGD","TAVHL","TCELL","TDGYO","THYAO","TOASO",
-    "TOFAS","TRGYO","TSKB","TTKOM","TTRAK","TUPRS","TURGG","TURSG","ULKER",
-    "VAKBN","VAKKO","VESBE","VESTL","YAPRK","YGYO","YUNSA","ZEDUR","ZRGYO"
+    "ACSEL","ADEL","AEFES","AGESA","AGHOL","AKBNK","AKCNS","AKSA","AKSEN",
+    "ALARK","ALBRK","ALKIM","ALVES","ANELE","ARCLK","ARDYZ","ARENA","ARSAN",
+    "ASELS","ASTOR","AYEN","AYGAZ","BAGFS","BALSU","BANVT","BERA","BIMAS",
+    "BINBN","BINHO","BIZIM","BJKAS","BORSK","BOSSA","BRISA","BRSAN","BSOKE",
+    "BTCIM","BUCIM","BURCE","CCOLA","CELHA","CEMAS","CEMTS","CIMSA","CLEBI",
+    "CWENE","DOAS","DOHOL","ECILC","ECZYT","EGEEN","EGGUB","EKGYO","EMKEL",
+    "ENJSA","ENKAI","ERGL","ETILR","FADE","FENER","FROTO","GARFA","GEDZA",
+    "GEREL","GESAN","GLYHO","GOLTS","GOODY","GSDHO","GSRAY","GUBRF","HALKB",
+    "HATEK","HEKTS","HOROZ","HTTBT","IHAAS","IHLAS","INDES","INFO","INVEO",
+    "ISGYO","JANTS","KAREL","KARSN","KARTN","KCAER","KCHOL","KENT","KGYO",
+    "KIMMR","KLNMA","KMPUR","KONYA","KORDS","KRDMD","KTLEV","KUTPO","LIDER",
+    "LOGO","MAALT","MAKIM","MANAS","MAVI","MEGAP","MERCN","MERIT","MERKO",
+    "MGROS","MPARK","MRSHL","NETAS","NTHOL","NUHCM","ODAS","OTKAR","OYAKC",
+    "PETKM","PETUN","PGSUS","PKART","POLHO","PRKAB","QNBFL","RAYSG","RGYAS",
+    "SAHOL","SANEL","SANFM","SARKY","SASA","SISE","SKBNK","SOKM","TATGD",
+    "TAVHL","TCELL","TDGYO","THYAO","TOASO","TRGYO","TSKB","TTKOM","TTRAK",
+    "TUPRS","TURGG","TURSG","ULKER","VAKBN","VAKKO","VESBE","VESTL","YAPRK",
+    "YGYO","YUNSA","ZEDUR","ZRGYO"
 ]
 
 def send_telegram(message):
@@ -43,12 +42,14 @@ def send_telegram(message):
 
 def get_signals(ticker):
     try:
-        df = yf.download(f"{ticker}.IS", period="6mo", interval="1d", progress=False, auto_adjust=True)
-        if df is None or len(df) < 50:
+        symbol = f"{ticker}.IS"
+        df = yf.download(symbol, period="3mo", interval="1d",
+                        progress=False, auto_adjust=True)
+        if df is None or len(df) < 20:
             return None
-        close = df["Close"].squeeze()
-        high  = df["High"].squeeze()
-        low   = df["Low"].squeeze()
+        close  = df["Close"].squeeze()
+        high   = df["High"].squeeze()
+        low    = df["Low"].squeeze()
         volume = df["Volume"].squeeze()
 
         e21  = ta.ema(close, 21)
@@ -68,30 +69,29 @@ def get_signals(ticker):
         i = -1
         p = -2
 
-        bull = close.iloc[i] > e50.iloc[i] and e21.iloc[i] > e50.iloc[i]
-        bear = close.iloc[i] < e50.iloc[i] and e21.iloc[i] < e50.iloc[i]
+        bull = float(close.iloc[i]) > float(e50.iloc[i]) and float(e21.iloc[i]) > float(e50.iloc[i])
+        bear = float(close.iloc[i]) < float(e50.iloc[i]) and float(e21.iloc[i]) < float(e50.iloc[i])
 
-        k_cross_over   = k.iloc[p] < d.iloc[p] and k.iloc[i] > d.iloc[i]
-        k_cross_under  = k.iloc[p] > d.iloc[p] and k.iloc[i] < d.iloc[i]
-        close_cross_e21 = close.iloc[p] < e21.iloc[p] and close.iloc[i] > e21.iloc[i]
-        rsi_cross_30   = rsi.iloc[p] < 30 and rsi.iloc[i] > 30
+        k_cross_over   = float(k.iloc[p]) < float(d.iloc[p]) and float(k.iloc[i]) > float(d.iloc[i])
+        k_cross_under  = float(k.iloc[p]) > float(d.iloc[p]) and float(k.iloc[i]) < float(d.iloc[i])
+        close_cross_e21 = float(close.iloc[p]) < float(e21.iloc[p]) and float(close.iloc[i]) > float(e21.iloc[i])
+        rsi_cross_30   = float(rsi.iloc[p]) < 30 and float(rsi.iloc[i]) > 30
 
-        al    = bull and k_cross_over and k.iloc[i] < 60 and rsi.iloc[i] > 40
-        sat   = bear and k_cross_under and k.iloc[i] > 40 and rsi.iloc[i] < 60
-        ralli = (close.iloc[i] > e21.iloc[i] and close_cross_e21 and
-                 rsi.iloc[i] > 50 and k.iloc[i] > d.iloc[i] and
-                 volume.iloc[i] > vol_avg20.iloc[i])
-        bot   = rsi.iloc[i] < 38 and k.iloc[i] < 28 and k_cross_over
+        al    = bull and k_cross_over and float(k.iloc[i]) < 60 and float(rsi.iloc[i]) > 40
+        sat   = bear and k_cross_under and float(k.iloc[i]) > 40 and float(rsi.iloc[i]) < 60
+        ralli = (float(close.iloc[i]) > float(e21.iloc[i]) and close_cross_e21 and
+                 float(rsi.iloc[i]) > 50 and float(k.iloc[i]) > float(d.iloc[i]) and
+                 float(volume.iloc[i]) > float(vol_avg20.iloc[i]))
+        bot   = float(rsi.iloc[i]) < 38 and float(k.iloc[i]) < 28 and k_cross_over
+        dip   = (rsi_cross_30 and
+                 float(mom.iloc[i]) > -10 and
+                 float(stochrsi_d.iloc[i]) < 40 and
+                 float(volume.iloc[i]) > float(vol_avg10.iloc[i]) and
+                 float(adx.iloc[i]) > 14)
 
-        dip = (rsi_cross_30 and
-               mom.iloc[i] > -10 and
-               stochrsi_d.iloc[i] < 40 and
-               volume.iloc[i] > vol_avg10.iloc[i] and
-               adx.iloc[i] > 14)
-
-        fiyat    = round(float(close.iloc[i]), 2)
-        degisim  = round(float((close.iloc[i] - close.iloc[p]) / close.iloc[p] * 100), 2)
-        rsi_val  = round(float(rsi.iloc[i]), 0)
+        fiyat   = round(float(close.iloc[i]), 2)
+        degisim = round(float((close.iloc[i] - close.iloc[p]) / close.iloc[p] * 100), 2)
+        rsi_val = round(float(rsi.iloc[i]), 0)
 
         return {"al": al, "sat": sat, "ralli": ralli, "bot": bot, "dip": dip,
                 "fiyat": fiyat, "degisim": degisim, "rsi": rsi_val}
@@ -100,12 +100,12 @@ def get_signals(ticker):
 
 def tara():
     send_telegram("🔍 <b>BIST Tarama Başlıyor...</b>")
-    al_list    = []
-    sat_list   = []
+    al_list = []
+    sat_list = []
     ralli_list = []
-    bot_list   = []
-    dip_list   = []
-    tarandi    = 0
+    bot_list = []
+    dip_list = []
+    tarandi = 0
 
     for hisse in BIST_HISSELER:
         sonuc = get_signals(hisse)
