@@ -2,15 +2,16 @@ from flask import Flask, request
 import requests
 import pandas as pd
 import pandas_ta as ta
-import urllib.request
-import json
 import threading
 import time
+from tvdatafeed import TvDatafeed, Interval
 
 app = Flask(__name__)
 
 TELEGRAM_TOKEN = "8760124700:AAG1UG8FpfETC3wBhvleqMaIpXi8FUvek8A"
 CHAT_ID = "635329910"
+
+tv = TvDatafeed()
 
 BIST_HISSELER = [
     "ACSEL","ADEL","AEFES","AGESA","AGHOL","AKBNK","AKCNS","AKSA","AKSEN",
@@ -43,25 +44,14 @@ def send_telegram(message):
 
 def get_signals(ticker):
     try:
-        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}.IS?interval=1d&range=3mo"
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=15) as r:
-            data = json.loads(r.read())
-        result = data["chart"]["result"][0]
-        closes = result["indicators"]["quote"][0]["close"]
-        highs  = result["indicators"]["quote"][0]["high"]
-        lows   = result["indicators"]["quote"][0]["low"]
-        vols   = result["indicators"]["quote"][0]["volume"]
-        closes = [x for x in closes if x is not None]
-        highs  = [x for x in highs  if x is not None]
-        lows   = [x for x in lows   if x is not None]
-        vols   = [x for x in vols   if x is not None]
-        if len(closes) < 20:
+        df = tv.get_hist(symbol=ticker, exchange="BIST",
+                        interval=Interval.in_daily, n_bars=100)
+        if df is None or len(df) < 20:
             return None
-        close  = pd.Series(closes)
-        high   = pd.Series(highs)
-        low    = pd.Series(lows)
-        volume = pd.Series(vols)
+        close  = df["close"]
+        high   = df["high"]
+        low    = df["low"]
+        volume = df["volume"]
 
         e21  = ta.ema(close, 21)
         e50  = ta.ema(close, 50)
