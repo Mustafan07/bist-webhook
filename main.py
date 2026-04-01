@@ -4,6 +4,7 @@ import pandas as pd
 import pandas_ta as ta
 import threading
 import time
+import io
 
 app = Flask(__name__)
 
@@ -43,23 +44,19 @@ def send_telegram(message):
 
 def get_data(ticker):
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-            "Accept": "application/json"
-        }
-        url = f"https://query2.finance.yahoo.com/v8/finance/chart/{ticker}.IS?interval=1d&range=6mo"
+        url = f"https://stooq.com/q/d/l/?s={ticker.lower()}.tr&i=d"
+        headers = {"User-Agent": "Mozilla/5.0"}
         r = requests.get(url, headers=headers, timeout=15)
-        data = r.json()
-        result = data["chart"]["result"][0]
-        q = result["indicators"]["quote"][0]
-        closes  = [x for x in q["close"]  if x is not None]
-        highs   = [x for x in q["high"]   if x is not None]
-        lows    = [x for x in q["low"]    if x is not None]
-        volumes = [x for x in q["volume"] if x is not None]
-        if len(closes) < 30:
+        df = pd.read_csv(io.StringIO(r.text))
+        df.columns = [c.lower() for c in df.columns]
+        df = df.dropna()
+        if len(df) < 30:
             return None
-        return (pd.Series(closes), pd.Series(highs),
-                pd.Series(lows), pd.Series(volumes))
+        close  = pd.Series(df["close"].values, dtype=float)
+        high   = pd.Series(df["high"].values, dtype=float)
+        low    = pd.Series(df["low"].values, dtype=float)
+        volume = pd.Series(df["volume"].values, dtype=float)
+        return close, high, low, volume
     except:
         return None
 
@@ -159,7 +156,7 @@ def tara():
         mesaj += "\n".join([f"• {h}" for h in dip_list]) + "\n\n"
 
     if tarandi == 0:
-        mesaj = "⚠️ Veri çekilemedi, bir sonraki taramada tekrar denenecek.\n\n"
+        mesaj = "⚠️ Veri çekilemedi.\n\n"
 
     mesaj += f"─────────────────────\n✅ {tarandi} hisse tarandı\n⏳ 60 dakika bekleniyor..."
 
@@ -167,7 +164,7 @@ def tara():
         send_telegram(mesaj[i:i+4000])
 
 def tarama_loop():
-    time.sleep(10)
+    time.sleep(15)
     while True:
         try:
             tara()
