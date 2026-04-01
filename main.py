@@ -4,34 +4,33 @@ import pandas as pd
 import pandas_ta as ta
 import threading
 import time
-from tvdatafeed import TvDatafeed, Interval
 
 app = Flask(__name__)
 
 TELEGRAM_TOKEN = "8760124700:AAG1UG8FpfETC3wBhvleqMaIpXi8FUvek8A"
 CHAT_ID = "635329910"
 
-tv = TvDatafeed()
-
 BIST_HISSELER = [
-    "ACSEL","ADEL","AEFES","AGESA","AGHOL","AKBNK","AKCNS","AKSA","AKSEN",
-    "ALARK","ALBRK","ALKIM","ALVES","ANELE","ARCLK","ARDYZ","ARENA","ARSAN",
-    "ASELS","ASTOR","AYEN","AYGAZ","BAGFS","BALSU","BANVT","BERA","BIMAS",
-    "BINBN","BINHO","BIZIM","BJKAS","BORSK","BOSSA","BRISA","BRSAN","BSOKE",
-    "BTCIM","BUCIM","BURCE","CCOLA","CELHA","CEMAS","CEMTS","CIMSA","CLEBI",
-    "CWENE","DOAS","DOHOL","ECILC","ECZYT","EGEEN","EGGUB","EKGYO","EMKEL",
-    "ENJSA","ENKAI","ERGL","ETILR","FADE","FENER","FROTO","GARFA","GEDZA",
-    "GEREL","GESAN","GLYHO","GOLTS","GOODY","GSDHO","GSRAY","GUBRF","HALKB",
-    "HATEK","HEKTS","HOROZ","HTTBT","IHAAS","IHLAS","INDES","INFO","INVEO",
-    "ISGYO","JANTS","KAREL","KARSN","KARTN","KCAER","KCHOL","KENT","KGYO",
-    "KIMMR","KLNMA","KMPUR","KONYA","KORDS","KRDMD","KTLEV","KUTPO","LIDER",
-    "LOGO","MAALT","MAKIM","MANAS","MAVI","MEGAP","MERCN","MERIT","MERKO",
-    "MGROS","MPARK","MRSHL","NETAS","NTHOL","NUHCM","ODAS","OTKAR","OYAKC",
-    "PETKM","PETUN","PGSUS","PKART","POLHO","PRKAB","QNBFL","RAYSG","RGYAS",
-    "SAHOL","SANEL","SANFM","SARKY","SASA","SISE","SKBNK","SOKM","TATGD",
-    "TAVHL","TCELL","TDGYO","THYAO","TOASO","TRGYO","TSKB","TTKOM","TTRAK",
-    "TUPRS","TURGG","TURSG","ULKER","VAKBN","VAKKO","VESBE","VESTL","YAPRK",
-    "YGYO","YUNSA","ZEDUR","ZRGYO"
+    "ACSEL","ADEL","AEFES","AGESA","AKBNK","AKCNS","AKSA","AKSEN",
+    "ALARK","ALBRK","ALKIM","ALVES","ANELE","ARCLK","ARDYZ","ARENA",
+    "ASELS","ASTOR","AYEN","AYGAZ","BAGFS","BALSU","BANVT","BERA",
+    "BIMAS","BINBN","BINHO","BIZIM","BJKAS","BORSK","BOSSA","BRISA",
+    "BRSAN","BSOKE","BTCIM","BUCIM","BURCE","CCOLA","CELHA","CEMAS",
+    "CEMTS","CIMSA","CLEBI","CWENE","DOAS","DOHOL","ECILC","ECZYT",
+    "EGEEN","EGGUB","EKGYO","EMKEL","ENJSA","ENKAI","ERGL","ETILR",
+    "FADE","FENER","FROTO","GARFA","GEDZA","GEREL","GESAN","GLYHO",
+    "GOLTS","GOODY","GSDHO","GSRAY","GUBRF","HALKB","HATEK","HEKTS",
+    "HOROZ","HTTBT","IHAAS","IHLAS","INDES","INFO","INVEO","ISGYO",
+    "JANTS","KAREL","KARSN","KARTN","KCAER","KCHOL","KENT","KGYO",
+    "KIMMR","KLNMA","KMPUR","KONYA","KORDS","KRDMD","KTLEV","KUTPO",
+    "LIDER","LOGO","MAALT","MAKIM","MANAS","MAVI","MEGAP","MERCN",
+    "MERIT","MERKO","MGROS","MPARK","MRSHL","NETAS","NTHOL","NUHCM",
+    "ODAS","OTKAR","OYAKC","PETKM","PETUN","PGSUS","PKART","POLHO",
+    "PRKAB","QNBFL","RAYSG","RGYAS","SAHOL","SANEL","SANFM","SARKY",
+    "SASA","SISE","SKBNK","SOKM","TATGD","TAVHL","TCELL","TDGYO",
+    "THYAO","TOASO","TRGYO","TSKB","TTKOM","TTRAK","TUPRS","TURGG",
+    "TURSG","ULKER","VAKBN","VAKKO","VESBE","VESTL","YAPRK","YGYO",
+    "YUNSA","ZEDUR","ZRGYO"
 ]
 
 def send_telegram(message):
@@ -42,16 +41,34 @@ def send_telegram(message):
     except:
         pass
 
+def get_data(ticker):
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json"
+        }
+        url = f"https://query2.finance.yahoo.com/v8/finance/chart/{ticker}.IS?interval=1d&range=6mo"
+        r = requests.get(url, headers=headers, timeout=15)
+        data = r.json()
+        result = data["chart"]["result"][0]
+        q = result["indicators"]["quote"][0]
+        closes  = [x for x in q["close"]  if x is not None]
+        highs   = [x for x in q["high"]   if x is not None]
+        lows    = [x for x in q["low"]    if x is not None]
+        volumes = [x for x in q["volume"] if x is not None]
+        if len(closes) < 30:
+            return None
+        return (pd.Series(closes), pd.Series(highs),
+                pd.Series(lows), pd.Series(volumes))
+    except:
+        return None
+
 def get_signals(ticker):
     try:
-        df = tv.get_hist(symbol=ticker, exchange="BIST",
-                        interval=Interval.in_daily, n_bars=100)
-        if df is None or len(df) < 20:
+        result = get_data(ticker)
+        if result is None:
             return None
-        close  = df["close"]
-        high   = df["high"]
-        low    = df["low"]
-        volume = df["volume"]
+        close, high, low, volume = result
 
         e21  = ta.ema(close, 21)
         e50  = ta.ema(close, 50)
@@ -73,10 +90,10 @@ def get_signals(ticker):
         bull = float(close.iloc[i]) > float(e50.iloc[i]) and float(e21.iloc[i]) > float(e50.iloc[i])
         bear = float(close.iloc[i]) < float(e50.iloc[i]) and float(e21.iloc[i]) < float(e50.iloc[i])
 
-        k_cross_over   = float(k.iloc[p]) < float(d.iloc[p]) and float(k.iloc[i]) > float(d.iloc[i])
-        k_cross_under  = float(k.iloc[p]) > float(d.iloc[p]) and float(k.iloc[i]) < float(d.iloc[i])
+        k_cross_over    = float(k.iloc[p]) < float(d.iloc[p]) and float(k.iloc[i]) > float(d.iloc[i])
+        k_cross_under   = float(k.iloc[p]) > float(d.iloc[p]) and float(k.iloc[i]) < float(d.iloc[i])
         close_cross_e21 = float(close.iloc[p]) < float(e21.iloc[p]) and float(close.iloc[i]) > float(e21.iloc[i])
-        rsi_cross_30   = float(rsi.iloc[p]) < 30 and float(rsi.iloc[i]) > 30
+        rsi_cross_30    = float(rsi.iloc[p]) < 30 and float(rsi.iloc[i]) > 30
 
         al    = bull and k_cross_over and float(k.iloc[i]) < 60 and float(rsi.iloc[i]) > 40
         sat   = bear and k_cross_under and float(k.iloc[i]) > 40 and float(rsi.iloc[i]) < 60
@@ -141,12 +158,16 @@ def tara():
         mesaj += f"🎯 <b>RSI DİP ({len(dip_list)} hisse)</b>\n"
         mesaj += "\n".join([f"• {h}" for h in dip_list]) + "\n\n"
 
+    if tarandi == 0:
+        mesaj = "⚠️ Veri çekilemedi, bir sonraki taramada tekrar denenecek.\n\n"
+
     mesaj += f"─────────────────────\n✅ {tarandi} hisse tarandı\n⏳ 60 dakika bekleniyor..."
 
     for i in range(0, len(mesaj), 4000):
         send_telegram(mesaj[i:i+4000])
 
 def tarama_loop():
+    time.sleep(10)
     while True:
         try:
             tara()
