@@ -2,4 +2,4 @@ flask
 requests
 pandas
 pandas_ta
-yfinance
+borsapy
