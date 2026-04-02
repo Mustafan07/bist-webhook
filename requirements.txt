@@ -2,5 +2,5 @@ flask
 requests
 pandas
 pandas_ta
-borsapy --no-deps
+borsapy
 tradingview-screener
