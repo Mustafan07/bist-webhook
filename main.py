@@ -1,5 +1,10 @@
+import os
+os.environ["NUMBA_DISABLE_JIT"] = "1"
+
 from flask import Flask, request
 import requests
+import pandas as pd
+import pandas_ta as ta
 import borsapy as bp
 import threading
 import time
@@ -46,9 +51,9 @@ def get_signals(ticker):
         df = hisse.history(period="6ay")
         if df is None or len(df) < 30:
             return None
-
-        import pandas as pd
-        import pandas_ta as ta
+        df = df.dropna()
+        if len(df) < 30:
+            return None
 
         close  = pd.Series(df["close"].values, dtype=float)
         high   = pd.Series(df["high"].values, dtype=float)
