@@ -47,7 +47,13 @@ def get_data(ticker):
         url = f"https://stooq.com/q/d/l/?s={ticker.lower()}.tr&i=d"
         headers = {"User-Agent": "Mozilla/5.0"}
         r = requests.get(url, headers=headers, timeout=15)
-        df = pd.read_csv(io.StringIO(r.text))
+        if r.status_code != 200:
+            send_telegram(f"⚠️ {ticker}: HTTP {r.status_code}")
+            return None
+        text = r.text.strip()
+        if "No data" in text or len(text) < 50:
+            return None
+        df = pd.read_csv(io.StringIO(text))
         df.columns = [c.lower() for c in df.columns]
         df = df.dropna()
         if len(df) < 30:
@@ -57,7 +63,8 @@ def get_data(ticker):
         low    = pd.Series(df["low"].values, dtype=float)
         volume = pd.Series(df["volume"].values, dtype=float)
         return close, high, low, volume
-    except:
+    except Exception as e:
+        send_telegram(f"⚠️ {ticker} hata: {str(e)}")
         return None
 
 def get_signals(ticker):
@@ -109,11 +116,23 @@ def get_signals(ticker):
 
         return {"al": al, "sat": sat, "ralli": ralli, "bot": bot, "dip": dip,
                 "fiyat": fiyat, "degisim": degisim, "rsi": rsi_val}
-    except:
+    except Exception as e:
+        send_telegram(f"⚠️ {ticker} sinyal hata: {str(e)}")
         return None
 
 def tara():
     send_telegram("🔍 <b>BIST Tarama Başlıyor...</b>")
+
+    # İlk 3 hisse test
+    send_telegram("🧪 Veri testi yapılıyor...")
+    for h in BIST_HISSELER[:3]:
+        try:
+            url = f"https://stooq.com/q/d/l/?s={h.lower()}.tr&i=d"
+            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+            send_telegram(f"{h}: HTTP {r.status_code} | {r.text[:80]}")
+        except Exception as e:
+            send_telegram(f"{h} bağlantı hatası: {str(e)}")
+
     al_list = []
     sat_list = []
     ralli_list = []
@@ -156,7 +175,7 @@ def tara():
         mesaj += "\n".join([f"• {h}" for h in dip_list]) + "\n\n"
 
     if tarandi == 0:
-        mesaj = "⚠️ Veri çekilemedi.\n\n"
+        mesaj = "⚠️ Hiç veri çekilemedi. Stooq erişim sorunu olabilir.\n\n"
 
     mesaj += f"─────────────────────\n✅ {tarandi} hisse tarandı\n⏳ 60 dakika bekleniyor..."
 
