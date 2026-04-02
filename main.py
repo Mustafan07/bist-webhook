@@ -8,13 +8,15 @@ import pandas_ta as ta
 import borsapy as bp
 import threading
 import time
+from datetime import datetime
+import pytz
 
 app = Flask(__name__)
 
 TELEGRAM_TOKEN = "8760124700:AAG1UG8FpfETC3wBhvleqMaIpXi8FUvek8A"
 CHAT_ID = "635329910"
 
-BIST_HISSELER = [
+YEDEK_HISSELER = [
     "ACSEL","ADEL","AEFES","AGESA","AKBNK","AKCNS","AKSA","AKSEN",
     "ALARK","ALBRK","ALKIM","ALVES","ANELE","ARCLK","ARDYZ","ARENA",
     "ASELS","ASTOR","AYEN","AYGAZ","BAGFS","BALSU","BANVT","BERA",
@@ -37,6 +39,19 @@ BIST_HISSELER = [
     "YUNSA","ZEDUR","ZRGYO"
 ]
 
+def get_all_hisseler():
+    try:
+        from tradingview_screener import Scanner
+        scanner = Scanner.get_all_symbols(markets=["turkey"])
+        hisseler = [s.replace("BIST:", "") for s in scanner]
+        if len(hisseler) > 100:
+            send_telegram(f"📋 Otomatik liste: {len(hisseler)} hisse bulundu.")
+            return hisseler
+        else:
+            return YEDEK_HISSELER
+    except Exception as e:
+        return YEDEK_HISSELER
+
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "HTML"}
@@ -44,6 +59,15 @@ def send_telegram(message):
         requests.post(url, json=payload, timeout=10)
     except:
         pass
+
+def seans_acik():
+    tz = pytz.timezone("Europe/Istanbul")
+    now = datetime.now(tz)
+    if now.weekday() >= 5:
+        return False
+    baslangic = now.replace(hour=9, minute=30, second=0, microsecond=0)
+    bitis = now.replace(hour=18, minute=30, second=0, microsecond=0)
+    return baslangic <= now <= bitis
 
 def get_data(ticker):
     try:
@@ -121,21 +145,12 @@ def get_guclu_trend(ticker):
             return None
         close, high, low, volume = result
 
-        # EMA5 > EMA13
         e5  = ta.ema(close, 5)
         e13 = ta.ema(close, 13)
-
-        # Parabolik SAR
         psar_df = ta.psar(high, low, close)
-        psar = psar_df.iloc[:, 0]  # PSARl (long)
-
-        # CCI(20)
+        psar = psar_df.iloc[:, 0]
         cci = ta.cci(high, low, close, 20)
-
-        # Hacim değişimi
         vol_degisim = (volume.iloc[-1] - volume.iloc[-2]) / volume.iloc[-2] * 100
-
-        # Ortalama hacim 10 gün
         vol_ort = volume.rolling(10).mean().iloc[-1]
 
         i = -1
@@ -162,6 +177,8 @@ def get_guclu_trend(ticker):
 def tara():
     send_telegram("🔍 <b>BIST Tarama Başlıyor...</b>")
 
+    hisse_listesi = get_all_hisseler()
+
     al_list = []
     sat_list = []
     ralli_list = []
@@ -170,7 +187,7 @@ def tara():
     guclu_list = []
     tarandi = 0
 
-    for hisse in BIST_HISSELER:
+    for hisse in hisse_listesi:
         sonuc = get_signals(hisse)
         if sonuc:
             tarandi += 1
@@ -224,7 +241,12 @@ def tarama_loop():
     time.sleep(15)
     while True:
         try:
-            tara()
+            if seans_acik():
+                tara()
+            else:
+                tz = pytz.timezone("Europe/Istanbul")
+                now = datetime.now(tz)
+                send_telegram(f"💤 Seans kapalı ({now.strftime('%H:%M')}). Robot beklemede.")
         except Exception as e:
             send_telegram(f"⚠️ Hata: {str(e)}")
         time.sleep(3600)
