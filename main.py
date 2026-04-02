@@ -48,7 +48,12 @@ def send_telegram(message):
 def get_signals(ticker):
     try:
         hisse = bp.Ticker(ticker)
-        df = hisse.history(period="6ay")
+        df = hisse.history(period="6mo")
+        if ticker == "AKBNK":
+            if df is None:
+                send_telegram("AKBNK: df None")
+            else:
+                send_telegram(f"AKBNK: {len(df)} satır, kolonlar: {list(df.columns)}")
         if df is None or len(df) < 30:
             return None
         df = df.dropna()
@@ -103,6 +108,8 @@ def get_signals(ticker):
         return {"al": al, "sat": sat, "ralli": ralli, "bot": bot, "dip": dip,
                 "fiyat": fiyat, "degisim": degisim, "rsi": rsi_val}
     except Exception as e:
+        if ticker == "AKBNK":
+            send_telegram(f"⚠️ AKBNK hata: {str(e)}")
         return None
 
 def tara():
