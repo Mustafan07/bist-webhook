@@ -45,7 +45,7 @@ def send_telegram(message):
     except:
         pass
 
-def get_signals(ticker):
+def get_data(ticker):
     try:
         hisse = bp.Ticker(ticker)
         df = hisse.history(period="6mo")
@@ -54,11 +54,20 @@ def get_signals(ticker):
         df = df.dropna()
         if len(df) < 30:
             return None
-
         close  = pd.Series(df["Close"].values, dtype=float)
         high   = pd.Series(df["High"].values, dtype=float)
         low    = pd.Series(df["Low"].values, dtype=float)
         volume = pd.Series(df["Volume"].values, dtype=float)
+        return close, high, low, volume
+    except:
+        return None
+
+def get_signals(ticker):
+    try:
+        result = get_data(ticker)
+        if result is None:
+            return None
+        close, high, low, volume = result
 
         e21  = ta.ema(close, 21)
         e50  = ta.ema(close, 50)
@@ -102,7 +111,52 @@ def get_signals(ticker):
 
         return {"al": al, "sat": sat, "ralli": ralli, "bot": bot, "dip": dip,
                 "fiyat": fiyat, "degisim": degisim, "rsi": rsi_val}
-    except Exception as e:
+    except:
+        return None
+
+def get_guclu_trend(ticker):
+    try:
+        result = get_data(ticker)
+        if result is None:
+            return None
+        close, high, low, volume = result
+
+        # EMA5 > EMA13
+        e5  = ta.ema(close, 5)
+        e13 = ta.ema(close, 13)
+
+        # Parabolik SAR
+        psar_df = ta.psar(high, low, close)
+        psar = psar_df.iloc[:, 0]  # PSARl (long)
+
+        # CCI(20)
+        cci = ta.cci(high, low, close, 20)
+
+        # Hacim değişimi
+        vol_degisim = (volume.iloc[-1] - volume.iloc[-2]) / volume.iloc[-2] * 100
+
+        # Ortalama hacim 10 gün
+        vol_ort = volume.rolling(10).mean().iloc[-1]
+
+        i = -1
+
+        ema_cross   = float(e5.iloc[i]) > float(e13.iloc[i])
+        sar_alti    = not pd.isna(psar.iloc[i]) and float(psar.iloc[i]) < float(close.iloc[i])
+        cci_yukari  = float(cci.iloc[i]) > 90
+        hacim_artis = float(vol_degisim) > 30
+        hacim_yeter = float(vol_ort) > 1_000_000
+
+        guclu = ema_cross and sar_alti and cci_yukari and hacim_artis and hacim_yeter
+
+        if not guclu:
+            return None
+
+        fiyat   = round(float(close.iloc[i]), 2)
+        degisim = round(float((close.iloc[i] - close.iloc[-2]) / close.iloc[-2] * 100), 2)
+        cci_val = round(float(cci.iloc[i]), 0)
+
+        return {"fiyat": fiyat, "degisim": degisim, "cci": cci_val, "vol_degisim": round(vol_degisim, 0)}
+    except:
         return None
 
 def tara():
@@ -113,6 +167,7 @@ def tara():
     ralli_list = []
     bot_list = []
     dip_list = []
+    guclu_list = []
     tarandi = 0
 
     for hisse in BIST_HISSELER:
@@ -132,6 +187,11 @@ def tara():
             if sonuc["dip"]:
                 dip_list.append(bilgi)
 
+        gt = get_guclu_trend(hisse)
+        if gt:
+            deg = f"+{gt['degisim']}%" if gt['degisim'] >= 0 else f"{gt['degisim']}%"
+            guclu_list.append(f"<b>{hisse}</b>  {gt['fiyat']}  ({deg})  CCI:{int(gt['cci'])}  Hcm:{int(gt['vol_degisim'])}%")
+
     mesaj = ""
     if al_list:
         mesaj += f"✅ <b>AL ({len(al_list)} hisse)</b>\n"
@@ -148,6 +208,9 @@ def tara():
     if dip_list:
         mesaj += f"🎯 <b>RSI DİP ({len(dip_list)} hisse)</b>\n"
         mesaj += "\n".join([f"• {h}" for h in dip_list]) + "\n\n"
+    if guclu_list:
+        mesaj += f"💪 <b>GÜÇLÜ TREND ({len(guclu_list)} hisse)</b>\n"
+        mesaj += "\n".join([f"• {h}" for h in guclu_list]) + "\n\n"
 
     if tarandi == 0:
         mesaj = "⚠️ Hiç veri çekilemedi.\n\n"
