@@ -1,8 +1,6 @@
 from flask import Flask, request
 import requests
-import pandas as pd
-import pandas_ta as ta
-import yfinance as yf
+import borsapy as bp
 import threading
 import time
 
@@ -42,29 +40,20 @@ def send_telegram(message):
     except:
         pass
 
-def get_data(ticker):
-    try:
-        symbol = f"{ticker}.IS"
-        df = yf.download(symbol, period="6mo", interval="1d", progress=False, auto_adjust=True)
-        if df is None or len(df) < 30:
-            return None
-        df = df.dropna()
-        if len(df) < 30:
-            return None
-        close  = pd.Series(df["Close"].values, dtype=float)
-        high   = pd.Series(df["High"].values, dtype=float)
-        low    = pd.Series(df["Low"].values, dtype=float)
-        volume = pd.Series(df["Volume"].values, dtype=float)
-        return close, high, low, volume
-    except Exception as e:
-        return None
-
 def get_signals(ticker):
     try:
-        result = get_data(ticker)
-        if result is None:
+        hisse = bp.Ticker(ticker)
+        df = hisse.history(period="6ay")
+        if df is None or len(df) < 30:
             return None
-        close, high, low, volume = result
+
+        import pandas as pd
+        import pandas_ta as ta
+
+        close  = pd.Series(df["close"].values, dtype=float)
+        high   = pd.Series(df["high"].values, dtype=float)
+        low    = pd.Series(df["low"].values, dtype=float)
+        volume = pd.Series(df["volume"].values, dtype=float)
 
         e21  = ta.ema(close, 21)
         e50  = ta.ema(close, 50)
@@ -108,7 +97,7 @@ def get_signals(ticker):
 
         return {"al": al, "sat": sat, "ralli": ralli, "bot": bot, "dip": dip,
                 "fiyat": fiyat, "degisim": degisim, "rsi": rsi_val}
-    except Exception as e:
+    except:
         return None
 
 def tara():
