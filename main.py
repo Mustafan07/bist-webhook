@@ -44,18 +44,33 @@ def send_telegram(message):
 
 def get_data(ticker):
     try:
-        url = f"https://stooq.com/q/d/l/?s={ticker.lower()}.tr&i=d"
-        headers = {"User-Agent": "Mozilla/5.0"}
+        symbol = f"{ticker}.IS"
+        url = (
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+            f"?interval=1d&range=6mo"
+        )
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json"
+        }
         r = requests.get(url, headers=headers, timeout=15)
         if r.status_code != 200:
-            send_telegram(f"⚠️ {ticker}: HTTP {r.status_code}")
             return None
-        text = r.text.strip()
-        if "No data" in text or len(text) < 50:
+        data = r.json()
+        result = data.get("chart", {}).get("result", None)
+        if not result:
             return None
-        df = pd.read_csv(io.StringIO(text))
-        df.columns = [c.lower() for c in df.columns]
-        df = df.dropna()
+        quotes = result[0].get("indicators", {}).get("quote", [{}])[0]
+        closes  = quotes.get("close", [])
+        highs   = quotes.get("high", [])
+        lows    = quotes.get("low", [])
+        volumes = quotes.get("volume", [])
+        df = pd.DataFrame({
+            "close": closes,
+            "high": highs,
+            "low": lows,
+            "volume": volumes
+        }).dropna()
         if len(df) < 30:
             return None
         close  = pd.Series(df["close"].values, dtype=float)
@@ -64,7 +79,6 @@ def get_data(ticker):
         volume = pd.Series(df["volume"].values, dtype=float)
         return close, high, low, volume
     except Exception as e:
-        send_telegram(f"⚠️ {ticker} hata: {str(e)}")
         return None
 
 def get_signals(ticker):
@@ -117,21 +131,10 @@ def get_signals(ticker):
         return {"al": al, "sat": sat, "ralli": ralli, "bot": bot, "dip": dip,
                 "fiyat": fiyat, "degisim": degisim, "rsi": rsi_val}
     except Exception as e:
-        send_telegram(f"⚠️ {ticker} sinyal hata: {str(e)}")
         return None
 
 def tara():
     send_telegram("🔍 <b>BIST Tarama Başlıyor...</b>")
-
-    # İlk 3 hisse test
-    send_telegram("🧪 Veri testi yapılıyor...")
-    for h in BIST_HISSELER[:3]:
-        try:
-            url = f"https://stooq.com/q/d/l/?s={h.lower()}.tr&i=d"
-            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
-            send_telegram(f"{h}: HTTP {r.status_code} | {r.text[:80]}")
-        except Exception as e:
-            send_telegram(f"{h} bağlantı hatası: {str(e)}")
 
     al_list = []
     sat_list = []
@@ -175,7 +178,7 @@ def tara():
         mesaj += "\n".join([f"• {h}" for h in dip_list]) + "\n\n"
 
     if tarandi == 0:
-        mesaj = "⚠️ Hiç veri çekilemedi. Stooq erişim sorunu olabilir.\n\n"
+        mesaj = "⚠️ Hiç veri çekilemedi.\n\n"
 
     mesaj += f"─────────────────────\n✅ {tarandi} hisse tarandı\n⏳ 60 dakika bekleniyor..."
 
