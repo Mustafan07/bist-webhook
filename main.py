@@ -49,11 +49,6 @@ def get_signals(ticker):
     try:
         hisse = bp.Ticker(ticker)
         df = hisse.history(period="6mo")
-        if ticker == "AKBNK":
-            if df is None:
-                send_telegram("AKBNK: df None")
-            else:
-                send_telegram(f"AKBNK: {len(df)} satır, kolonlar: {list(df.columns)}")
         if df is None or len(df) < 30:
             return None
         df = df.dropna()
@@ -72,10 +67,10 @@ def get_signals(ticker):
         adx_df = ta.adx(high, low, close, 14)
         adx  = adx_df["ADX_14"]
         stoch = ta.stoch(high, low, close, 9, 3, 3)
-        k = stoch["STOCHk_9_3_3"]
-        d = stoch["STOCHd_9_3_3"]
+        k = stoch.iloc[:, 0]
+        d = stoch.iloc[:, 1]
         stochrsi = ta.stochrsi(close, 3, 3, 14, 14)
-        stochrsi_d = stochrsi["STOCHRSId_14_14_3_3"]
+        stochrsi_d = stochrsi.iloc[:, 1]
         vol_avg10 = volume.rolling(10).mean()
         vol_avg20 = volume.rolling(20).mean()
 
@@ -108,8 +103,6 @@ def get_signals(ticker):
         return {"al": al, "sat": sat, "ralli": ralli, "bot": bot, "dip": dip,
                 "fiyat": fiyat, "degisim": degisim, "rsi": rsi_val}
     except Exception as e:
-        if ticker == "AKBNK":
-            send_telegram(f"⚠️ AKBNK hata: {str(e)}")
         return None
 
 def tara():
