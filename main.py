@@ -49,9 +49,13 @@ def get_signals(ticker):
     try:
         hisse = bp.Ticker(ticker)
         df = hisse.history(period="6ay")
+        if ticker == "AKBNK":
+            if df is None:
+                send_telegram("AKBNK: df None")
+            else:
+                send_telegram(f"AKBNK kolonlar: {list(df.columns)}\nİlk satır: {str(df.iloc[0].to_dict())[:200]}")
+            return None
         if df is None or len(df) < 30:
-            if ticker == "AKBNK":
-                send_telegram(f"⚠️ AKBNK: df boş veya yetersiz, len={len(df) if df is not None else 'None'}")
             return None
         df = df.dropna()
         if len(df) < 30:
