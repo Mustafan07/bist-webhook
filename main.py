@@ -49,22 +49,16 @@ def get_signals(ticker):
     try:
         hisse = bp.Ticker(ticker)
         df = hisse.history(period="6ay")
-        if ticker == "AKBNK":
-            if df is None:
-                send_telegram("AKBNK: df None")
-            else:
-                send_telegram(f"AKBNK kolonlar: {list(df.columns)}\nİlk satır: {str(df.iloc[0].to_dict())[:200]}")
-            return None
         if df is None or len(df) < 30:
             return None
         df = df.dropna()
         if len(df) < 30:
             return None
 
-        close  = pd.Series(df["close"].values, dtype=float)
-        high   = pd.Series(df["high"].values, dtype=float)
-        low    = pd.Series(df["low"].values, dtype=float)
-        volume = pd.Series(df["volume"].values, dtype=float)
+        close  = pd.Series(df["Close"].values, dtype=float)
+        high   = pd.Series(df["High"].values, dtype=float)
+        low    = pd.Series(df["Low"].values, dtype=float)
+        volume = pd.Series(df["Volume"].values, dtype=float)
 
         e21  = ta.ema(close, 21)
         e50  = ta.ema(close, 50)
@@ -109,8 +103,6 @@ def get_signals(ticker):
         return {"al": al, "sat": sat, "ralli": ralli, "bot": bot, "dip": dip,
                 "fiyat": fiyat, "degisim": degisim, "rsi": rsi_val}
     except Exception as e:
-        if ticker == "AKBNK":
-            send_telegram(f"⚠️ AKBNK hata: {str(e)}")
         return None
 
 def tara():
