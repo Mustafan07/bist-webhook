@@ -2,9 +2,9 @@ from flask import Flask, request
 import requests
 import pandas as pd
 import pandas_ta as ta
+import yfinance as yf
 import threading
 import time
-import io
 
 app = Flask(__name__)
 
@@ -45,38 +45,16 @@ def send_telegram(message):
 def get_data(ticker):
     try:
         symbol = f"{ticker}.IS"
-        url = (
-            f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
-            f"?interval=1d&range=6mo"
-        )
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-            "Accept": "application/json"
-        }
-        r = requests.get(url, headers=headers, timeout=15)
-        if r.status_code != 200:
+        df = yf.download(symbol, period="6mo", interval="1d", progress=False, auto_adjust=True)
+        if df is None or len(df) < 30:
             return None
-        data = r.json()
-        result = data.get("chart", {}).get("result", None)
-        if not result:
-            return None
-        quotes = result[0].get("indicators", {}).get("quote", [{}])[0]
-        closes  = quotes.get("close", [])
-        highs   = quotes.get("high", [])
-        lows    = quotes.get("low", [])
-        volumes = quotes.get("volume", [])
-        df = pd.DataFrame({
-            "close": closes,
-            "high": highs,
-            "low": lows,
-            "volume": volumes
-        }).dropna()
+        df = df.dropna()
         if len(df) < 30:
             return None
-        close  = pd.Series(df["close"].values, dtype=float)
-        high   = pd.Series(df["high"].values, dtype=float)
-        low    = pd.Series(df["low"].values, dtype=float)
-        volume = pd.Series(df["volume"].values, dtype=float)
+        close  = pd.Series(df["Close"].values, dtype=float)
+        high   = pd.Series(df["High"].values, dtype=float)
+        low    = pd.Series(df["Low"].values, dtype=float)
+        volume = pd.Series(df["Volume"].values, dtype=float)
         return close, high, low, volume
     except Exception as e:
         return None
