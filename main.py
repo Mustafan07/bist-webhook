@@ -16,6 +16,9 @@ app = Flask(__name__)
 TELEGRAM_TOKEN = "8760124700:AAG1UG8FpfETC3wBhvleqMaIpXi8FUvek8A"
 CHAT_ID = "635329910"
 
+# Gün içi sinyal hafızası
+sinyal_hafiza = {}
+
 BIST_HISSELER = [
     "A1CAP","A1YEN","ACSEL","ADEL","ADESE","ADGYO","AEFES","AFYON","AGESA","AGHOL",
     "AGROT","AGYO","AHGAZ","AHSGY","AKBNK","AKCNS","AKENR","AKFGY","AKFIS","AKFYE",
@@ -122,12 +125,12 @@ def get_signals(ticker):
         rsi  = ta.rsi(close, 14)
         mom  = ta.mom(close, 10)
         adx_df = ta.adx(high, low, close, 14)
+        adx  = adx_df["ADX_14"]
         stoch = ta.stoch(high, low, close, 9, 3, 3)
         k = stoch.iloc[:, 0]
         d = stoch.iloc[:, 1]
         stochrsi = ta.stochrsi(close, 3, 3, 14, 14)
         stochrsi_d = stochrsi.iloc[:, 1]
-        adx  = adx_df["ADX_14"]
         vol_avg10 = volume.rolling(10).mean()
         vol_avg20 = volume.rolling(20).mean()
 
@@ -196,6 +199,62 @@ def get_guclu_trend(ticker):
     except:
         return None
 
+def hafizaya_ekle(hisse, sinyal_turu, fiyat):
+    global sinyal_hafiza
+    if hisse not in sinyal_hafiza:
+        sinyal_hafiza[hisse] = {"sinyaller": [], "fiyat": fiyat}
+    sinyal_hafiza[hisse]["sinyaller"].append(sinyal_turu)
+    sinyal_hafiza[hisse]["fiyat"] = fiyat
+
+def gunluk_rapor_gonder():
+    global sinyal_hafiza
+    if not sinyal_hafiza:
+        send_telegram("📊 <b>GÜNLÜK RAPOR</b>\nBugün sinyal çıkmadı.")
+        sinyal_hafiza = {}
+        return
+
+    # Sinyal sayısına göre sırala
+    sirali = sorted(sinyal_hafiza.items(), key=lambda x: len(x[1]["sinyaller"]), reverse=True)
+
+    guclu = [(h, v) for h, v in sirali if len(v["sinyaller"]) >= 3]
+    orta  = [(h, v) for h, v in sirali if len(v["sinyaller"]) == 2]
+    tek   = [(h, v) for h, v in sirali if len(v["sinyaller"]) == 1]
+
+    mesaj = "📊 <b>GÜNLÜK SİNYAL RAPORU</b>\n\n"
+
+    if guclu:
+        mesaj += "🏆 <b>GÜÇLÜ ADAYLAR (3+ sinyal)</b>\n"
+        for h, v in guclu:
+            sayac = {}
+            for s in v["sinyaller"]:
+                sayac[s] = sayac.get(s, 0) + 1
+            detay = ", ".join([f"{s}:{c}" for s, c in sayac.items()])
+            mesaj += f"• <b>{h}</b>  {v['fiyat']}  — {len(v['sinyaller'])}x sinyal ({detay})\n"
+        mesaj += "\n"
+
+    if orta:
+        mesaj += "⚡ <b>TEKRARLAYAN (2 sinyal)</b>\n"
+        for h, v in orta:
+            sayac = {}
+            for s in v["sinyaller"]:
+                sayac[s] = sayac.get(s, 0) + 1
+            detay = ", ".join([f"{s}:{c}" for s, c in sayac.items()])
+            mesaj += f"• <b>{h}</b>  {v['fiyat']}  — ({detay})\n"
+        mesaj += "\n"
+
+    if tek:
+        mesaj += "📌 <b>TEK SİNYAL</b>\n"
+        for h, v in tek:
+            mesaj += f"• <b>{h}</b>  {v['fiyat']}  — {v['sinyaller'][0]}\n"
+
+    mesaj += f"\n─────────────────────\n📅 Toplam {len(sinyal_hafiza)} farklı hisse sinyal verdi."
+
+    for i in range(0, len(mesaj), 4000):
+        send_telegram(mesaj[i:i+4000])
+
+    # Hafızayı sıfırla
+    sinyal_hafiza = {}
+
 def tara():
     send_telegram("🔍 <b>BIST Tarama Başlıyor... (566 hisse)</b>")
 
@@ -213,21 +272,28 @@ def tara():
             tarandi += 1
             deg  = f"+{sonuc['degisim']}%" if sonuc['degisim'] >= 0 else f"{sonuc['degisim']}%"
             bilgi = f"<b>{hisse}</b>  {sonuc['fiyat']}  ({deg})  RSI:{int(sonuc['rsi'])}"
+
             if sonuc["ralli"]:
                 ralli_list.append(bilgi)
+                hafizaya_ekle(hisse, "RALLİ", sonuc['fiyat'])
             elif sonuc["al"]:
                 al_list.append(bilgi)
+                hafizaya_ekle(hisse, "AL", sonuc['fiyat'])
             if sonuc["sat"]:
                 sat_list.append(bilgi)
+                hafizaya_ekle(hisse, "SAT", sonuc['fiyat'])
             if sonuc["bot"]:
                 bot_list.append(bilgi)
+                hafizaya_ekle(hisse, "BOT AL", sonuc['fiyat'])
             if sonuc["dip"]:
                 dip_list.append(bilgi)
+                hafizaya_ekle(hisse, "RSI DİP", sonuc['fiyat'])
 
         gt = get_guclu_trend(hisse)
         if gt:
             deg = f"+{gt['degisim']}%" if gt['degisim'] >= 0 else f"{gt['degisim']}%"
             guclu_list.append(f"<b>{hisse}</b>  {gt['fiyat']}  ({deg})  CCI:{int(gt['cci'])}  Hcm:{int(gt['vol_degisim'])}%")
+            hafizaya_ekle(hisse, "GÜÇLÜ TREND", gt['fiyat'])
 
     mesaj = ""
     if al_list:
@@ -259,16 +325,30 @@ def tara():
 
 def tarama_loop():
     time.sleep(15)
+    rapor_gonderildi = False
+
     while True:
         try:
+            tz = pytz.timezone("Europe/Istanbul")
+            now = datetime.now(tz)
+
+            # Günlük rapor 17:30'da
+            if now.weekday() < 5 and now.hour == 17 and now.minute < 60 and not rapor_gonderildi:
+                gunluk_rapor_gonder()
+                rapor_gonderildi = True
+
+            # Gece yarısı rapor bayrağını sıfırla
+            if now.hour == 0:
+                rapor_gonderildi = False
+
             if seans_acik():
                 tara()
             else:
-                tz = pytz.timezone("Europe/Istanbul")
-                now = datetime.now(tz)
                 send_telegram(f"💤 Seans kapalı ({now.strftime('%H:%M')}). Robot beklemede.")
+
         except Exception as e:
             send_telegram(f"⚠️ Hata: {str(e)}")
+
         time.sleep(3600)
 
 @app.route("/webhook", methods=["POST"])
