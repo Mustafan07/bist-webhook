@@ -16,41 +16,65 @@ app = Flask(__name__)
 TELEGRAM_TOKEN = "8760124700:AAG1UG8FpfETC3wBhvleqMaIpXi8FUvek8A"
 CHAT_ID = "635329910"
 
-YEDEK_HISSELER = [
-    "ACSEL","ADEL","AEFES","AGESA","AKBNK","AKCNS","AKSA","AKSEN",
-    "ALARK","ALBRK","ALKIM","ALVES","ANELE","ARCLK","ARDYZ","ARENA",
-    "ASELS","ASTOR","AYEN","AYGAZ","BAGFS","BALSU","BANVT","BERA",
-    "BIMAS","BINBN","BINHO","BIZIM","BJKAS","BORSK","BOSSA","BRISA",
-    "BRSAN","BSOKE","BTCIM","BUCIM","BURCE","CCOLA","CELHA","CEMAS",
-    "CEMTS","CIMSA","CLEBI","CWENE","DOAS","DOHOL","ECILC","ECZYT",
-    "EGEEN","EGGUB","EKGYO","EMKEL","ENJSA","ENKAI","ERGL","ETILR",
-    "FADE","FENER","FROTO","GARFA","GEDZA","GEREL","GESAN","GLYHO",
-    "GOLTS","GOODY","GSDHO","GSRAY","GUBRF","HALKB","HATEK","HEKTS",
-    "HOROZ","HTTBT","IHAAS","IHLAS","INDES","INFO","INVEO","ISGYO",
-    "JANTS","KAREL","KARSN","KARTN","KCAER","KCHOL","KENT","KGYO",
-    "KIMMR","KLNMA","KMPUR","KONYA","KORDS","KRDMD","KTLEV","KUTPO",
-    "LIDER","LOGO","MAALT","MAKIM","MANAS","MAVI","MEGAP","MERCN",
-    "MERIT","MERKO","MGROS","MPARK","MRSHL","NETAS","NTHOL","NUHCM",
-    "ODAS","OTKAR","OYAKC","PETKM","PETUN","PGSUS","PKART","POLHO",
-    "PRKAB","QNBFL","RAYSG","RGYAS","SAHOL","SANEL","SANFM","SARKY",
-    "SASA","SISE","SKBNK","SOKM","TATGD","TAVHL","TCELL","TDGYO",
-    "THYAO","TOASO","TRGYO","TSKB","TTKOM","TTRAK","TUPRS","TURGG",
-    "TURSG","ULKER","VAKBN","VAKKO","VESBE","VESTL","YAPRK","YGYO",
-    "YUNSA","ZEDUR","ZRGYO"
+BIST_HISSELER = [
+    "A1CAP","A1YEN","ACSEL","ADEL","ADESE","ADGYO","AEFES","AFYON","AGESA","AGHOL",
+    "AGROT","AGYO","AHGAZ","AHSGY","AKBNK","AKCNS","AKENR","AKFGY","AKFIS","AKFYE",
+    "AKGRT","AKHAN","AKMGY","AKSA","AKSEN","AKSGY","AKSUE","AKYHO","ALARK","ALBRK",
+    "ALCAR","ALCTL","ALFAS","ALGYO","ALKA","ALKIM","ALKLC","ALTNY","ALVES","ANELE",
+    "ANGEN","ANHYT","ANSGR","ARASE","ARCLK","ARDYZ","ARENA","ARFYE","ARMGD","ARSAN",
+    "ARTMS","ARZUM","ASELS","ASGYO","ASTOR","ASUZU","ATAGY","ATAKP","ATATP","ATATR",
+    "AVGYO","AVHOL","AVOD","AVPGY","AVTUR","AYCES","AYDEM","AYEN","AYGAZ","AZTEK",
+    "BAGFS","BAHKM","BAKAB","BALSU","BANVT","BARMA","BASGZ","BAYRK","BEGYO","BERA",
+    "BESLR","BESTE","BEYAZ","BFREN","BIENY","BIGCH","BIGEN","BIGTK","BIMAS","BINBN",
+    "BINHO","BIOEN","BIZIM","BJKAS","BLCYT","BLUME","BMSCH","BMSTL","BNTAS","BOBET",
+    "BORLS","BORSK","BOSSA","BRISA","BRKSN","BRKVY","BRLSM","BRSAN","BRYAT","BSOKE",
+    "BTCIM","BUCIM","BULGS","BURCE","BURVA","BVSAN","BYDNR","CANTE","CATES","CCOLA",
+    "CELHA","CEMAS","CEMTS","CEMZY","CEOEM","CGCAM","CIMSA","CLEBI","CMBTN","CONSE",
+    "COSMO","CRDFA","CRFSA","CUSAN","CVKMD","CWENE","DAGI","DAPGM","DARDL","DCTTR",
+    "DENGE","DERHL","DERIM","DESA","DESPC","DEVA","DGATE","DGGYO","DGNMO","DITAS",
+    "DMRGD","DMSAS","DNISI","DOAS","DOCO","DOFER","DOFRB","DOGUB","DOHOL","DOKTA",
+    "DSTKF","DUNYH","DURDO","DURKN","DYOBY","DZGYO","EBEBK","ECILC","ECOGR","ECZYT",
+    "EDATA","EDIP","EFOR","EGEEN","EGEGY","EGEPO","EGGUB","EGPRO","EGSER","EKGYO",
+    "EKOS","EKSUN","ELITE","EMKEL","EMPAE","ENDAE","ENERY","ENJSA","ENKAI","ENSRI",
+    "ENTRA","EPLAS","ERBOS","ERCB","EREGL","ERSU","ESCAR","ESCOM","ESEN","ETILR",
+    "EUPWR","EUREN","EYGYO","FADE","FENER","FLAP","FMIZP","FONET","FORMT","FORTE",
+    "FRIGO","FRMPL","FROTO","FZLGY","GARAN","GARFA","GEDIK","GEDZA","GENIL","GENKM",
+    "GENTS","GEREL","GESAN","GIPTA","GLBMD","GLCVY","GLRMK","GLRYH","GLYHO","GMTAS",
+    "GOKNR","GOLTS","GOODY","GOZDE","GRSEL","GRTHO","GSDDE","GSDHO","GSRAY","GUBRF",
+    "GUNDG","GWIND","GZNMI","HALKB","HATEK","HATSN","HDFGS","HEDEF","HEKTS","HKTM",
+    "HLGYO","HOROZ","HRKET","HTTBT","HUBVC","HUNER","HURGZ","ICBCT","ICUGS","IDGYO",
+    "IEYHO","IHAAS","IHEVA","IHGZT","IHLAS","IHLGM","IHYAY","IMASM","INDES","INFO",
+    "INGRM","INTEM","INVEO","INVES","ISATR","ISBTR","ISCTR","ISDMR","ISFIN","ISGSY",
+    "ISGYO","ISKPL","ISMEN","ISSEN","IZENR","IZFAS","IZINV","IZMDC","JANTS","KAPLM",
+    "KAREL","KARSN","KARTN","KATMR","KAYSE","KBORU","KCAER","KCHOL","KFEIN","KGYO",
+    "KIMMR","KLGYO","KLKIM","KLMSN","KLRHO","KLSER","KLSYN","KLYPV","KMPUR","KNFRT",
+    "KOCMT","KONKA","KONTR","KONYA","KOPOL","KORDS","KOTON","KRDMA","KRDMB","KRDMD",
+    "KRGYO","KRONT","KRPLS","KRSTL","KRTEK","KRVGD","KTLEV","KTSKR","KUTPO","KUVVA",
+    "KUYAS","KZBGY","KZGYO","LIDER","LIDFA","LILAK","LINK","LKMNH","LMKDC","LOGO",
+    "LRSHO","LUKSK","LXGYO","LYDHO","LYDYE","MAALT","MACKO","MAGEN","MAKIM","MAKTK",
+    "MANAS","MARBL","MARKA","MARMR","MARTI","MAVI","MCARD","MEDTR","MEGMT","MEKAG",
+    "MEPET","MERCN","MERIT","MERKO","METRO","MEYSU","MGROS","MHRGY","MIATK","MNDRS",
+    "MNDTR","MOBTL","MOGAN","MOPAS","MPARK","MRGYO","MRSHL","MSGYO","MTRKS","MZHLD",
+    "NATEN","NETAS","NETCD","NIBAS","NTGAZ","NTHOL","NUGYO","NUHCM","OBAMS","OBASE",
+    "ODAS","ODINE","OFSYM","ONCSM","ONRYT","ORCAY","ORGE","OSMEN","OSTIM","OTKAR",
+    "OTTO","OYAKC","OYLUM","OYYAT","OZATD","OZGYO","OZKGY","OZRDN","OZSUB","OZYSR",
+    "PAGYO","PAHOL","PAMEL","PAPIL","PARSN","PASEU","PATEK","PCILT","PEKGY","PENGD",
+    "PENTA","PETKM","PETUN","PGSUS","PINSU","PKART","PKENT","PLTUR","PNLSN","PNSUT",
+    "POLHO","POLTK","PRDGS","PRKAB","PRKME","PRZMA","PSDTC","PSGYO","QUAGR","RALYH",
+    "RAYSG","REEDR","RGYAS","RNPOL","RODRG","RTALB","RUBNS","RUZYE","RYGYO","RYSAS",
+    "SAFKR","SAHOL","SAMAT","SANEL","SANFM","SANKO","SARKY","SASA","SAYAS","SDTTR",
+    "SEGMN","SEGYO","SEKFK","SEKUR","SELEC","SELVA","SERNT","SEYKM","SILVR","SISE",
+    "SKBNK","SKTAS","SKYLP","SKYMD","SMART","SMRTG","SMRVA","SNGYO","SNICA","SOKE",
+    "SOKM","SONME","SRVGY","SUNTK","SURGY","SUWEN","SVGYO","TABGD","TARKM","TATEN",
+    "TATGD","TAVHL","TBORG","TCELL","TCKRC","TDGYO","TEHOL","TEKTU","TERA","TEZOL",
+    "TGSAS","THYAO","TKFEN","TKNSA","TLMAN","TMPOL","TMSN","TNZTP","TOASO","TRALT",
+    "TRCAS","TRENJ","TRGYO","TRHOL","TRILC","TRMET","TSGYO","TSKB","TSPOR","TTKOM",
+    "TTRAK","TUCLK","TUKAS","TUPRS","TUREX","TURGG","TURSG","UCAYM","UFUK","ULAS",
+    "ULKER","ULUFA","ULUSE","ULUUN","UNLU","USAK","VAKBN","VAKFA","VAKFN","VAKKO",
+    "VANGD","VBTYZ","VERTU","VERUS","VESBE","VESTL","VKGYO","VKING","VRGYO","VSNMD",
+    "YAPRK","YATAS","YAYLA","YEOTK","YESIL","YGGYO","YIGIT","YKBNK","YKSLN","YUNSA",
+    "YYLGD","ZEDUR","ZERGY","ZGYO","ZOREN","ZRGYO"
 ]
-
-def get_all_hisseler():
-    try:
-        from tradingview_screener import Scanner
-        scanner = Scanner.get_all_symbols(markets=["turkey"])
-        hisseler = [s.replace("BIST:", "") for s in scanner]
-        if len(hisseler) > 100:
-            send_telegram(f"📋 Otomatik liste: {len(hisseler)} hisse bulundu.")
-            return hisseler
-        else:
-            return YEDEK_HISSELER
-    except Exception as e:
-        return YEDEK_HISSELER
 
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -98,12 +122,12 @@ def get_signals(ticker):
         rsi  = ta.rsi(close, 14)
         mom  = ta.mom(close, 10)
         adx_df = ta.adx(high, low, close, 14)
-        adx  = adx_df["ADX_14"]
         stoch = ta.stoch(high, low, close, 9, 3, 3)
         k = stoch.iloc[:, 0]
         d = stoch.iloc[:, 1]
         stochrsi = ta.stochrsi(close, 3, 3, 14, 14)
         stochrsi_d = stochrsi.iloc[:, 1]
+        adx  = adx_df["ADX_14"]
         vol_avg10 = volume.rolling(10).mean()
         vol_avg20 = volume.rolling(20).mean()
 
@@ -161,9 +185,7 @@ def get_guclu_trend(ticker):
         hacim_artis = float(vol_degisim) > 30
         hacim_yeter = float(vol_ort) > 1_000_000
 
-        guclu = ema_cross and sar_alti and cci_yukari and hacim_artis and hacim_yeter
-
-        if not guclu:
+        if not (ema_cross and sar_alti and cci_yukari and hacim_artis and hacim_yeter):
             return None
 
         fiyat   = round(float(close.iloc[i]), 2)
@@ -175,9 +197,7 @@ def get_guclu_trend(ticker):
         return None
 
 def tara():
-    send_telegram("🔍 <b>BIST Tarama Başlıyor...</b>")
-
-    hisse_listesi = get_all_hisseler()
+    send_telegram("🔍 <b>BIST Tarama Başlıyor... (566 hisse)</b>")
 
     al_list = []
     sat_list = []
@@ -187,7 +207,7 @@ def tara():
     guclu_list = []
     tarandi = 0
 
-    for hisse in hisse_listesi:
+    for hisse in BIST_HISSELER:
         sonuc = get_signals(hisse)
         if sonuc:
             tarandi += 1
