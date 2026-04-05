@@ -16,7 +16,6 @@ app = Flask(__name__)
 TELEGRAM_TOKEN = "8760124700:AAG1UG8FpfETC3wBhvleqMaIpXi8FUvek8A"
 CHAT_ID = "635329910"
 
-# Gün içi sinyal hafızası
 sinyal_hafiza = {}
 
 BIST_HISSELER = [
@@ -109,7 +108,8 @@ def get_data(ticker):
         high   = pd.Series(df["High"].values, dtype=float)
         low    = pd.Series(df["Low"].values, dtype=float)
         volume = pd.Series(df["Volume"].values, dtype=float)
-        return close, high, low, volume
+        open_  = pd.Series(df["Open"].values, dtype=float)
+        return close, high, low, volume, open_
     except:
         return None
 
@@ -118,7 +118,7 @@ def get_signals(ticker):
         result = get_data(ticker)
         if result is None:
             return None
-        close, high, low, volume = result
+        close, high, low, volume, open_ = result
 
         e21  = ta.ema(close, 21)
         e50  = ta.ema(close, 50)
@@ -170,7 +170,7 @@ def get_guclu_trend(ticker):
         result = get_data(ticker)
         if result is None:
             return None
-        close, high, low, volume = result
+        close, high, low, volume, open_ = result
 
         e5  = ta.ema(close, 5)
         e13 = ta.ema(close, 13)
@@ -199,52 +199,51 @@ def get_guclu_trend(ticker):
     except:
         return None
 
+def bullish_engulfing(open_, close, i=-1, p=-2):
+    # Önceki mum kırmızı (düşüş), sonraki mum yeşil (yükseliş)
+    # Yeşil mumun gövdesi kırmızı mumun gövdesini tamamen yutuyor
+    onceki_kirmizi = float(close.iloc[p]) < float(open_.iloc[p])
+    bugunki_yesil  = float(close.iloc[i]) > float(open_.iloc[i])
+    yutuyor = (float(open_.iloc[i]) <= float(close.iloc[p]) and
+               float(close.iloc[i]) >= float(open_.iloc[p]))
+    return onceki_kirmizi and bugunki_yesil and yutuyor
+
 def get_dip_star(ticker):
     try:
         result = get_data(ticker)
         if result is None:
             return None
-        close, high, low, volume = result
+        close, high, low, volume, open_ = result
 
         rsi = ta.rsi(close, 14)
         macd_df = ta.macd(close, 12, 26, 9)
-        macd_hist = macd_df.iloc[:, 2]  # histogram
+        macd_hist = macd_df.iloc[:, 2]
 
-        # 52 haftalık (250 gün) min
         min_250 = close.rolling(250).min()
-        # 20 günlük min
-        min_20 = close.rolling(20).min()
+        vol_ort5 = volume.rolling(5).mean()
 
         i  = -1
         p  = -2
         p2 = -3
 
-        # Hacim trendi — son 3 gün artıyor mu
-        vol_artan = (float(volume.iloc[i]) > float(volume.iloc[p]) and
-                     float(volume.iloc[p]) > float(volume.iloc[p2]))
-
-        # Hacim ortalaması
-        vol_ort5 = volume.rolling(5).mean()
-
-        # Kriterler
         # 1. Fiyat 52 haftalık dibin %20 içinde
         dip_yakin = float(close.iloc[i]) <= float(min_250.iloc[i]) * 1.20
 
-        # 2. Fiyat 20 günlük dip bölgesinde
-        dip_20 = float(close.iloc[i]) <= float(min_20.iloc[i]) * 1.05
-
-        # 3. RSI 35 altından yukarı dönüş
+        # 2. RSI 35 altından yukarı dönüş
         rsi_donus = float(rsi.iloc[p]) < 35 and float(rsi.iloc[i]) > float(rsi.iloc[p])
 
-        # 4. MACD histogram dipten yukarı dönüş
+        # 3. MACD histogram dipten yukarı dönüş (hala negatif ama yükseliyor)
         macd_donus = (float(macd_hist.iloc[p2]) < float(macd_hist.iloc[p]) and
                       float(macd_hist.iloc[p]) < float(macd_hist.iloc[i]) and
-                      float(macd_hist.iloc[i]) < 0)  # hala negatif ama yukarı dönüyor
+                      float(macd_hist.iloc[i]) < 0)
 
-        # 5. Hacim artışı
-        hacim_artis = vol_artan or float(volume.iloc[i]) > float(vol_ort5.iloc[i]) * 1.5
+        # 4. Hacim artışı
+        hacim_artis = float(volume.iloc[i]) > float(vol_ort5.iloc[i]) * 1.5
 
-        if not (dip_yakin and rsi_donus and macd_donus and hacim_artis):
+        # 5. Bullish Engulfing (zorunlu)
+        engulfing = bullish_engulfing(open_, close)
+
+        if not (dip_yakin and rsi_donus and macd_donus and hacim_artis and engulfing):
             return None
 
         fiyat   = round(float(close.iloc[i]), 2)
@@ -312,18 +311,16 @@ def dip_star_rapor_gonder():
     send_telegram("🌟 <b>DİP STAR Taraması Başlıyor...</b>")
 
     dip_list = []
-    tarandi = 0
 
     for hisse in BIST_HISSELER:
         sonuc = get_dip_star(hisse)
         if sonuc is not None:
-            tarandi += 1
             deg = f"+{sonuc['degisim']}%" if sonuc['degisim'] >= 0 else f"{sonuc['degisim']}%"
             dip_list.append(f"<b>{hisse}</b>  {sonuc['fiyat']}  ({deg})  RSI:{int(sonuc['rsi'])}")
 
     mesaj = "🌟🚀 <b>DİP STAR RAPORU</b>\n"
     mesaj += "─────────────────────\n"
-    mesaj += "<i>Uzun düşüş sonrası dip dönüş sinyali veren hisseler</i>\n\n"
+    mesaj += "<i>Dip bölgesinde Bullish Engulfing + RSI dönüş + MACD dönüş + Hacim artışı</i>\n\n"
 
     if dip_list:
         for h in dip_list:
@@ -331,7 +328,7 @@ def dip_star_rapor_gonder():
     else:
         mesaj += "Bugün DİP STAR kriteri karşılayan hisse bulunamadı.\n"
 
-    mesaj += f"\n─────────────────────\n✅ {tarandi} hisse DİP STAR kriterini karşıladı."
+    mesaj += f"\n─────────────────────\n✅ {len(dip_list)} hisse DİP STAR kriterini karşıladı."
 
     for i in range(0, len(mesaj), 4000):
         send_telegram(mesaj[i:i+4000])
@@ -413,17 +410,14 @@ def tarama_loop():
             tz = pytz.timezone("Europe/Istanbul")
             now = datetime.now(tz)
 
-            # Günlük rapor 17:30'da
             if now.weekday() < 5 and now.hour == 17 and not rapor_gonderildi:
                 gunluk_rapor_gonder()
                 rapor_gonderildi = True
 
-            # DİP STAR raporu 18:30'da
             if now.weekday() < 5 and now.hour == 18 and now.minute >= 30 and not dip_star_gonderildi:
                 dip_star_rapor_gonder()
                 dip_star_gonderildi = True
 
-            # Gece yarısı bayrakları sıfırla
             if now.hour == 0:
                 rapor_gonderildi = False
                 dip_star_gonderildi = False
