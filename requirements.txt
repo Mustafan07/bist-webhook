@@ -2,6 +2,5 @@ flask
 requests
 pandas
 pandas_ta
-borsapy
 tradingview-screener
 pytz
