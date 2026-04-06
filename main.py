@@ -98,11 +98,11 @@ def seans_acik():
 def get_data(ticker):
     try:
         hisse = bp.Ticker(ticker)
-        df = hisse.history(period="12mo")
-        if df is None or len(df) < 60:
+        df = hisse.history(period="6mo")
+        if df is None or len(df) < 30:
             return None
         df = df.dropna()
-        if len(df) < 60:
+        if len(df) < 30:
             return None
         close  = pd.Series(df["Close"].values, dtype=float)
         high   = pd.Series(df["High"].values, dtype=float)
@@ -216,7 +216,7 @@ def get_dip_star(ticker):
         rsi = ta.rsi(close, 14)
         macd_df = ta.macd(close, 12, 26, 9)
         macd_hist = macd_df.iloc[:, 2]
-        min_250 = close.rolling(250).min()
+        min_250 = close.rolling(len(close)).min()
         vol_ort5 = volume.rolling(5).mean()
 
         i  = -1
