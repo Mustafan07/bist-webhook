@@ -5,3 +5,4 @@ pandas_ta
 borsapy
 tradingview-screener
 pytz
+numba==0.56.4
