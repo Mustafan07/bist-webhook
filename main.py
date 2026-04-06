@@ -200,8 +200,6 @@ def get_guclu_trend(ticker):
         return None
 
 def bullish_engulfing(open_, close, i=-1, p=-2):
-    # Önceki mum kırmızı (düşüş), sonraki mum yeşil (yükseliş)
-    # Yeşil mumun gövdesi kırmızı mumun gövdesini tamamen yutuyor
     onceki_kirmizi = float(close.iloc[p]) < float(open_.iloc[p])
     bugunki_yesil  = float(close.iloc[i]) > float(open_.iloc[i])
     yutuyor = (float(open_.iloc[i]) <= float(close.iloc[p]) and
@@ -218,7 +216,6 @@ def get_dip_star(ticker):
         rsi = ta.rsi(close, 14)
         macd_df = ta.macd(close, 12, 26, 9)
         macd_hist = macd_df.iloc[:, 2]
-
         min_250 = close.rolling(250).min()
         vol_ort5 = volume.rolling(5).mean()
 
@@ -226,24 +223,59 @@ def get_dip_star(ticker):
         p  = -2
         p2 = -3
 
-        # 1. Fiyat 52 haftalık dibin %20 içinde
-        dip_yakin = float(close.iloc[i]) <= float(min_250.iloc[i]) * 1.20
-
-        # 2. RSI 35 altından yukarı dönüş
-        rsi_donus = float(rsi.iloc[p]) < 35 and float(rsi.iloc[i]) > float(rsi.iloc[p])
-
-        # 3. MACD histogram dipten yukarı dönüş (hala negatif ama yükseliyor)
-        macd_donus = (float(macd_hist.iloc[p2]) < float(macd_hist.iloc[p]) and
-                      float(macd_hist.iloc[p]) < float(macd_hist.iloc[i]) and
-                      float(macd_hist.iloc[i]) < 0)
-
-        # 4. Hacim artışı
+        dip_yakin   = float(close.iloc[i]) <= float(min_250.iloc[i]) * 1.20
+        rsi_donus   = float(rsi.iloc[p]) < 35 and float(rsi.iloc[i]) > float(rsi.iloc[p])
+        macd_donus  = (float(macd_hist.iloc[p2]) < float(macd_hist.iloc[p]) and
+                       float(macd_hist.iloc[p]) < float(macd_hist.iloc[i]) and
+                       float(macd_hist.iloc[i]) < 0)
         hacim_artis = float(volume.iloc[i]) > float(vol_ort5.iloc[i]) * 1.5
-
-        # 5. Bullish Engulfing (zorunlu)
-        engulfing = bullish_engulfing(open_, close)
+        engulfing   = bullish_engulfing(open_, close)
 
         if not (dip_yakin and rsi_donus and macd_donus and hacim_artis and engulfing):
+            return None
+
+        fiyat   = round(float(close.iloc[i]), 2)
+        degisim = round(float((close.iloc[i] - close.iloc[p]) / close.iloc[p] * 100), 2)
+        rsi_val = round(float(rsi.iloc[i]), 0)
+
+        return {"fiyat": fiyat, "degisim": degisim, "rsi": rsi_val}
+    except:
+        return None
+
+def get_kirilim(ticker):
+    try:
+        result = get_data(ticker)
+        if result is None:
+            return None
+        close, high, low, volume, open_ = result
+
+        e20  = ta.ema(close, 20)
+        e50  = ta.ema(close, 50)
+        e200 = ta.ema(close, 200)
+        atr = ta.atr(high, low, close, 14)
+        atr_sma = atr.rolling(20).mean()
+        rsi = ta.rsi(close, 14)
+        vol_sma20 = volume.rolling(20).mean()
+        highest_20 = high.rolling(20).max()
+        lowest_10  = low.rolling(10).min()
+        lowest_20  = low.rolling(20).min()
+
+        i = -1
+        p = -2
+
+        trend = (float(e20.iloc[i]) > float(e50.iloc[i]) and
+                 float(e50.iloc[i]) > float(e200.iloc[i]) and
+                 float(close.iloc[i]) > float(e20.iloc[i]) and
+                 float(close.iloc[i]) > float(e50.iloc[i]))
+
+        yukselen_dip  = float(lowest_10.iloc[i]) > float(lowest_20.iloc[i])
+        dusuk_vol     = float(atr.iloc[i]) < float(atr_sma.iloc[i])
+        rsi_guclu     = float(rsi.iloc[i]) > 52 and float(rsi.iloc[i]) > float(rsi.iloc[p])
+        hacim_artiyor = float(volume.iloc[i]) > float(vol_sma20.iloc[i]) * 1.15
+        zirve_yakin   = (float(close.iloc[i]) >= float(highest_20.iloc[i]) * 0.96 and
+                         float(close.iloc[i]) < float(highest_20.iloc[i]) * 1.02)
+
+        if not (trend and yukselen_dip and dusuk_vol and rsi_guclu and hacim_artiyor and zirve_yakin):
             return None
 
         fiyat   = round(float(close.iloc[i]), 2)
@@ -342,6 +374,7 @@ def tara():
     bot_list = []
     dip_list = []
     guclu_list = []
+    kirilim_list = []
     tarandi = 0
 
     for hisse in BIST_HISSELER:
@@ -372,6 +405,12 @@ def tara():
             guclu_list.append(f"<b>{hisse}</b>  {gt['fiyat']}  ({deg})  CCI:{int(gt['cci'])}  Hcm:{int(gt['vol_degisim'])}%")
             hafizaya_ekle(hisse, "GÜÇLÜ TREND", gt['fiyat'])
 
+        kr = get_kirilim(hisse)
+        if kr:
+            deg = f"+{kr['degisim']}%" if kr['degisim'] >= 0 else f"{kr['degisim']}%"
+            kirilim_list.append(f"<b>{hisse}</b>  {kr['fiyat']}  ({deg})  RSI:{int(kr['rsi'])}")
+            hafizaya_ekle(hisse, "KIRILIM", kr['fiyat'])
+
     mesaj = ""
     if al_list:
         mesaj += f"✅ <b>AL ({len(al_list)} hisse)</b>\n"
@@ -391,6 +430,9 @@ def tara():
     if guclu_list:
         mesaj += f"💪 <b>GÜÇLÜ TREND ({len(guclu_list)} hisse)</b>\n"
         mesaj += "\n".join([f"• {h}" for h in guclu_list]) + "\n\n"
+    if kirilim_list:
+        mesaj += f"🔥 <b>KIRILIM ({len(kirilim_list)} hisse)</b>\n"
+        mesaj += "\n".join([f"• {h}" for h in kirilim_list]) + "\n\n"
 
     if tarandi == 0:
         mesaj = "⚠️ Hiç veri çekilemedi.\n\n"
@@ -404,6 +446,7 @@ def tarama_loop():
     time.sleep(15)
     rapor_gonderildi = False
     dip_star_gonderildi = False
+    son_tarama_saati = -1
 
     while True:
         try:
@@ -421,16 +464,19 @@ def tarama_loop():
             if now.hour == 0:
                 rapor_gonderildi = False
                 dip_star_gonderildi = False
+                son_tarama_saati = -1
 
             if seans_acik():
-                tara()
+                if now.hour != son_tarama_saati:
+                    tara()
+                    son_tarama_saati = now.hour
             else:
                 send_telegram(f"💤 Seans kapalı ({now.strftime('%H:%M')}). Robot beklemede.")
 
         except Exception as e:
             send_telegram(f"⚠️ Hata: {str(e)}")
 
-        time.sleep(3600)
+        time.sleep(600)
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
