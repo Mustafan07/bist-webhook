@@ -5,7 +5,6 @@ from flask import Flask, request
 import requests
 import pandas as pd
 import pandas_ta as ta
-from tradingview_screener import Scanner
 import threading
 import time
 from datetime import datetime
@@ -89,22 +88,21 @@ def send_telegram(message):
 def get_data(ticker):
     try:
         symbol = f"BIST:{ticker}"
-        url = "https://scanner.tradingview.com/turkey/scan"
-        payload = {
-            "symbols": {"tickers": [symbol]},
-            "columns": ["open", "high", "low", "close", "volume",
-                       "High.1M", "Low.1M", "High.3M", "Low.3M"]
+        url = "https://scanner.tradingview.com/symbol"
+        params = {
+            "symbol": symbol,
+            "fields": "open,high,low,close,volume",
+            "no_404": "true"
         }
-        headers = {"Content-Type": "application/json"}
-        r = requests.post(url, json=payload, headers=headers, timeout=15)
-        if r.status_code != 200:
-            return None
-        data = r.json()
-        if not data.get("data"):
-            return None
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json",
+            "Origin": "https://www.tradingview.com",
+            "Referer": "https://www.tradingview.com/"
+        }
 
         # Geçmiş veriyi çek
-        hist_url = f"https://scanner.tradingview.com/history"
+        hist_url = "https://scanner.tradingview.com/history"
         hist_payload = {
             "symbol": symbol,
             "resolution": "1D",
@@ -115,7 +113,7 @@ def get_data(ticker):
         if hist_r.status_code != 200:
             return None
         hist = hist_r.json()
-        if not hist.get("t"):
+        if not hist.get("t") or len(hist["t"]) < 30:
             return None
 
         close  = pd.Series(hist["c"], dtype=float)
@@ -124,10 +122,15 @@ def get_data(ticker):
         volume = pd.Series(hist["v"], dtype=float)
         open_  = pd.Series(hist["o"], dtype=float)
 
-        if len(close) < 30:
+        df = pd.DataFrame({"c": close, "h": high, "l": low, "v": volume, "o": open_}).dropna()
+        if len(df) < 30:
             return None
 
-        return close, high, low, volume, open_
+        return (pd.Series(df["c"].values, dtype=float),
+                pd.Series(df["h"].values, dtype=float),
+                pd.Series(df["l"].values, dtype=float),
+                pd.Series(df["v"].values, dtype=float),
+                pd.Series(df["o"].values, dtype=float))
     except:
         return None
 
@@ -352,7 +355,6 @@ def birikim_raporu_gonder():
                                   if s in ["AL","RALLİ","BOT AL","RSI DİP","KIRILIM","GÜÇLÜ TREND"]])
                 parcalar.append(f"<b>{h}</b> {len(v['sinyaller'])}x({detay})")
             mesaj += " | ".join(parcalar) + "\n"
-
         if orta_al:
             mesaj += "⚡ " + " | ".join([f"<b>{h}</b> 2x" for h, v in orta_al]) + "\n"
         if tek_al:
@@ -578,7 +580,7 @@ def tarama_loop():
                 dip_star_gonderildi = False
                 son_tarama_saati = -1
 
-            # Seans kontrolü geçici olarak kapalı - her zaman tarar
+            # Seans kontrolü geçici kapalı
             if now.hour != son_tarama_saati:
                 tara()
                 son_tarama_saati = now.hour
