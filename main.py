@@ -293,6 +293,90 @@ def hafizaya_ekle(hisse, sinyal_turu, fiyat):
     sinyal_hafiza[hisse]["sinyaller"].append(sinyal_turu)
     sinyal_hafiza[hisse]["fiyat"] = fiyat
 
+def birikim_raporu_gonder():
+    tz = pytz.timezone("Europe/Istanbul")
+    now = datetime.now(tz)
+    saat = now.strftime("%H:%M")
+
+    # Kapanışa kaç saat kaldı
+    bitis = now.replace(hour=18, minute=30, second=0, microsecond=0)
+    kalan = bitis - now
+    kalan_saat = max(0, int(kalan.total_seconds() // 3600))
+    kalan_dk = max(0, int((kalan.total_seconds() % 3600) // 60))
+
+    if not sinyal_hafiza:
+        return
+
+    # AL grubu
+    al_grup = {h: v for h, v in sinyal_hafiza.items()
+               if any(s in ["AL", "RALLİ", "BOT AL", "RSI DİP", "KIRILIM", "GÜÇLÜ TREND"]
+                      for s in v["sinyaller"])}
+
+    # SAT grubu
+    sat_grup = {h: v for h, v in sinyal_hafiza.items()
+                if any(s == "SAT" for s in v["sinyaller"])}
+
+    mesaj = f"📊 <b>GÜNLÜK BİRİKİM ({saat})</b>\n"
+    mesaj += f"⏰ Seans kapanışına {kalan_saat}s {kalan_dk}dk kaldı\n"
+    mesaj += "─────────────────────\n\n"
+
+    # AL GRUBU
+    if al_grup:
+        mesaj += "🟢 <b>AL GRUBU</b>\n"
+        al_sirali = sorted(al_grup.items(), key=lambda x: len(x[1]["sinyaller"]), reverse=True)
+
+        guclu_al = [(h, v) for h, v in al_sirali if len(v["sinyaller"]) >= 3]
+        orta_al  = [(h, v) for h, v in al_sirali if len(v["sinyaller"]) == 2]
+        tek_al   = [(h, v) for h, v in al_sirali if len(v["sinyaller"]) == 1]
+
+        if guclu_al:
+            mesaj += "🏆 "
+            parcalar = []
+            for h, v in guclu_al:
+                sayac = {}
+                for s in v["sinyaller"]:
+                    sayac[s] = sayac.get(s, 0) + 1
+                detay = "+".join([f"{s}:{c}" for s, c in sayac.items()
+                                  if s in ["AL","RALLİ","BOT AL","RSI DİP","KIRILIM","GÜÇLÜ TREND"]])
+                parcalar.append(f"<b>{h}</b> {len(v['sinyaller'])}x({detay})")
+            mesaj += " | ".join(parcalar) + "\n"
+
+        if orta_al:
+            mesaj += "⚡ "
+            mesaj += " | ".join([f"<b>{h}</b> 2x" for h, v in orta_al]) + "\n"
+
+        if tek_al:
+            mesaj += "📌 "
+            mesaj += " | ".join([f"<b>{h}</b>" for h, v in tek_al]) + "\n"
+
+        mesaj += "\n"
+
+    # SAT GRUBU
+    if sat_grup:
+        mesaj += "🔴 <b>SAT GRUBU</b>\n"
+        sat_sirali = sorted(sat_grup.items(), key=lambda x: len(x[1]["sinyaller"]), reverse=True)
+
+        guclu_sat = [(h, v) for h, v in sat_sirali if len(v["sinyaller"]) >= 3]
+        orta_sat  = [(h, v) for h, v in sat_sirali if len(v["sinyaller"]) == 2]
+        tek_sat   = [(h, v) for h, v in sat_sirali if len(v["sinyaller"]) == 1]
+
+        if guclu_sat:
+            mesaj += "🏆 "
+            mesaj += " | ".join([f"<b>{h}</b> {len(v['sinyaller'])}x" for h, v in guclu_sat]) + "\n"
+
+        if orta_sat:
+            mesaj += "⚡ "
+            mesaj += " | ".join([f"<b>{h}</b> 2x" for h, v in orta_sat]) + "\n"
+
+        if tek_sat:
+            mesaj += "📌 "
+            mesaj += " | ".join([f"<b>{h}</b>" for h, v in tek_sat]) + "\n"
+
+    mesaj += f"\n─────────────────────\n📅 {len(sinyal_hafiza)} hisse sinyal verdi"
+
+    for i in range(0, len(mesaj), 4000):
+        send_telegram(mesaj[i:i+4000])
+
 def gunluk_rapor_gonder():
     global sinyal_hafiza
     if not sinyal_hafiza:
@@ -301,38 +385,71 @@ def gunluk_rapor_gonder():
         return
 
     sirali = sorted(sinyal_hafiza.items(), key=lambda x: len(x[1]["sinyaller"]), reverse=True)
-    guclu = [(h, v) for h, v in sirali if len(v["sinyaller"]) >= 3]
-    orta  = [(h, v) for h, v in sirali if len(v["sinyaller"]) == 2]
-    tek   = [(h, v) for h, v in sirali if len(v["sinyaller"]) == 1]
+
+    al_sirali  = [(h, v) for h, v in sirali
+                  if any(s in ["AL","RALLİ","BOT AL","RSI DİP","KIRILIM","GÜÇLÜ TREND"]
+                         for s in v["sinyaller"])]
+    sat_sirali = [(h, v) for h, v in sirali
+                  if any(s == "SAT" for s in v["sinyaller"])]
 
     mesaj = "📊 <b>GÜNLÜK SİNYAL RAPORU</b>\n\n"
 
-    if guclu:
-        mesaj += "🏆 <b>GÜÇLÜ ADAYLAR (3+ sinyal)</b>\n"
-        for h, v in guclu:
-            sayac = {}
-            for s in v["sinyaller"]:
-                sayac[s] = sayac.get(s, 0) + 1
-            detay = ", ".join([f"{s}:{c}" for s, c in sayac.items()])
-            mesaj += f"• <b>{h}</b>  {v['fiyat']}  — {len(v['sinyaller'])}x ({detay})\n"
+    # AL GRUBU
+    if al_sirali:
+        mesaj += "🟢 <b>AL GRUBU</b>\n"
+        guclu = [(h, v) for h, v in al_sirali if len(v["sinyaller"]) >= 3]
+        orta  = [(h, v) for h, v in al_sirali if len(v["sinyaller"]) == 2]
+        tek   = [(h, v) for h, v in al_sirali if len(v["sinyaller"]) == 1]
+
+        if guclu:
+            mesaj += "🏆 <b>Güçlü (3+)</b>\n"
+            for h, v in guclu:
+                sayac = {}
+                for s in v["sinyaller"]:
+                    sayac[s] = sayac.get(s, 0) + 1
+                detay = ", ".join([f"{s}:{c}" for s, c in sayac.items()])
+                mesaj += f"• <b>{h}</b>  {v['fiyat']}  {len(v['sinyaller'])}x ({detay})\n"
+            mesaj += "\n"
+
+        if orta:
+            mesaj += "⚡ <b>Tekrarlayan (2)</b>\n"
+            for h, v in orta:
+                sayac = {}
+                for s in v["sinyaller"]:
+                    sayac[s] = sayac.get(s, 0) + 1
+                detay = ", ".join([f"{s}:{c}" for s, c in sayac.items()])
+                mesaj += f"• <b>{h}</b>  {v['fiyat']}  ({detay})\n"
+            mesaj += "\n"
+
+        if tek:
+            mesaj += "📌 <b>Tek sinyal</b>\n"
+            mesaj += "  ".join([f"<b>{h}</b>" for h, v in tek]) + "\n"
         mesaj += "\n"
 
-    if orta:
-        mesaj += "⚡ <b>TEKRARLAYAN (2 sinyal)</b>\n"
-        for h, v in orta:
-            sayac = {}
-            for s in v["sinyaller"]:
-                sayac[s] = sayac.get(s, 0) + 1
-            detay = ", ".join([f"{s}:{c}" for s, c in sayac.items()])
-            mesaj += f"• <b>{h}</b>  {v['fiyat']}  — ({detay})\n"
-        mesaj += "\n"
+    # SAT GRUBU
+    if sat_sirali:
+        mesaj += "🔴 <b>SAT GRUBU</b>\n"
+        guclu = [(h, v) for h, v in sat_sirali if len(v["sinyaller"]) >= 3]
+        orta  = [(h, v) for h, v in sat_sirali if len(v["sinyaller"]) == 2]
+        tek   = [(h, v) for h, v in sat_sirali if len(v["sinyaller"]) == 1]
 
-    if tek:
-        mesaj += "📌 <b>TEK SİNYAL</b>\n"
-        for h, v in tek:
-            mesaj += f"• <b>{h}</b>  {v['fiyat']}  — {v['sinyaller'][0]}\n"
+        if guclu:
+            mesaj += "🏆 <b>Güçlü (3+)</b>\n"
+            for h, v in guclu:
+                mesaj += f"• <b>{h}</b>  {v['fiyat']}  {len(v['sinyaller'])}x SAT\n"
+            mesaj += "\n"
 
-    mesaj += f"\n─────────────────────\n📅 {len(sinyal_hafiza)} farklı hisse sinyal verdi."
+        if orta:
+            mesaj += "⚡ <b>Tekrarlayan (2)</b>\n"
+            for h, v in orta:
+                mesaj += f"• <b>{h}</b>  {v['fiyat']}\n"
+            mesaj += "\n"
+
+        if tek:
+            mesaj += "📌 <b>Tek sinyal</b>\n"
+            mesaj += "  ".join([f"<b>{h}</b>" for h, v in tek]) + "\n"
+
+    mesaj += f"\n─────────────────────\n📅 {len(sinyal_hafiza)} hisse sinyal verdi."
 
     for i in range(0, len(mesaj), 4000):
         send_telegram(mesaj[i:i+4000])
@@ -441,6 +558,9 @@ def tara():
 
     for i in range(0, len(mesaj), 4000):
         send_telegram(mesaj[i:i+4000])
+
+    # Her tarama sonunda birikim raporu gönder
+    birikim_raporu_gonder()
 
 def tarama_loop():
     time.sleep(15)
