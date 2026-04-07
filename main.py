@@ -1,6 +1,10 @@
 import os
 os.environ["NUMBA_DISABLE_JIT"] = "1"
 
+VERSION = "2026-04-08"
+print(f"BOT BAŞLADI - Versiyon: {VERSION}")
+
+
 from flask import Flask, request
 import requests
 import pandas as pd
