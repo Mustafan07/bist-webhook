@@ -4,7 +4,6 @@ os.environ["NUMBA_DISABLE_JIT"] = "1"
 VERSION = "2026-04-08"
 print(f"BOT BAŞLADI - Versiyon: {VERSION}")
 
-
 from flask import Flask, request
 import requests
 import pandas as pd
@@ -17,7 +16,7 @@ import pytz
 
 app = Flask(__name__)
 
-TELEGRAM_TOKEN = "8760124700:AAG1UG8FpfETC3wBhvleqMaIpXi8FUvek8A"
+TELEGRAM_TOKEN = "8760124700:AAE3BqqIwXZ4xNVkdaDdtpdBEo7WYZg4lvY"
 CHAT_ID = "635329910"
 
 sinyal_hafiza = {}
@@ -452,7 +451,7 @@ def dip_star_rapor_gonder():
         send_telegram(mesaj[i:i+4000])
 
 def tara():
-    send_telegram("🔍 <b>BIST Tarama Başlıyor... (566 hisse)</b>")
+    send_telegram(f"🔍 <b>BIST Tarama Başlıyor... (566 hisse) v{VERSION}</b>")
 
     al_list = []
     sat_list = []
@@ -531,7 +530,7 @@ def tara():
     birikim_raporu_gonder()
 
 def tarama_loop():
-    time.sleep(15)
+    time.sleep(300)  # 5 dakika bekle, deploy overlap geçsin
     rapor_gonderildi = False
     dip_star_gonderildi = False
     son_tarama_saati = -1
@@ -554,7 +553,6 @@ def tarama_loop():
                 dip_star_gonderildi = False
                 son_tarama_saati = -1
 
-            # Seans kontrolü kapalı - her saat tarar
             if now.hour != son_tarama_saati:
                 tara()
                 son_tarama_saati = now.hour
