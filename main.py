@@ -452,16 +452,13 @@ def dip_star_rapor_gonder():
         send_telegram(mesaj[i:i+4000])
 
 def tara():
-    send_telegram(f"🔍 <b>BIST Tarama Başlıyor... (50 hisse test) v{VERSION}</b>")
+    send_telegram(f"🔍 <b>BIST Tarama Başlıyor... (566 hisse) v{VERSION}</b>")
 
-    # Veri testi
     try:
         test = get_data("THYAO")
         if test is None:
             send_telegram("⚠️ VERİ HATASI: borsapy veri çekemiyor!")
             return
-        else:
-            send_telegram("✅ VERİ TESTİ BAŞARILI")
     except Exception as e:
         send_telegram(f"⚠️ VERİ HATASI: {str(e)}")
         return
@@ -475,16 +472,12 @@ def tara():
     kirilim_list = []
     tarandi = 0
 
-    # Her hisse için veriyi BİR KEZ çek, tüm stratejilere gönder
-    for hisse in BIST_HISSELER[:50]:  # Test için ilk 50 hisse
+    for hisse in BIST_HISSELER:
         data = get_data(hisse)
         if data is None:
             continue
 
         tarandi += 1
-        close = data[0]
-        deg = round(float((close.iloc[-1] - close.iloc[-2]) / close.iloc[-2] * 100), 2)
-        fiyat = round(float(close.iloc[-1]), 2)
 
         sonuc = get_signals(hisse, data)
         if sonuc:
