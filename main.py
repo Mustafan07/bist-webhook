@@ -107,9 +107,9 @@ def get_data(ticker):
     except:
         return None
 
-def get_signals(ticker):
+def get_signals(ticker, data=None):
     try:
-        result = get_data(ticker)
+        result = data if data else get_data(ticker)
         if result is None:
             return None
         close, high, low, volume, open_ = result
@@ -159,9 +159,9 @@ def get_signals(ticker):
     except:
         return None
 
-def get_guclu_trend(ticker):
+def get_guclu_trend(ticker, data=None):
     try:
-        result = get_data(ticker)
+        result = data if data else get_data(ticker)
         if result is None:
             return None
         close, high, low, volume, open_ = result
@@ -200,9 +200,9 @@ def bullish_engulfing(open_, close, i=-1, p=-2):
                float(close.iloc[i]) >= float(open_.iloc[p]))
     return onceki_kirmizi and bugunki_yesil and yutuyor
 
-def get_dip_star(ticker):
+def get_dip_star(ticker, data=None):
     try:
-        result = get_data(ticker)
+        result = data if data else get_data(ticker)
         if result is None:
             return None
         close, high, low, volume, open_ = result
@@ -236,9 +236,9 @@ def get_dip_star(ticker):
     except:
         return None
 
-def get_kirilim(ticker):
+def get_kirilim(ticker, data=None):
     try:
-        result = get_data(ticker)
+        result = data if data else get_data(ticker)
         if result is None:
             return None
         close, high, low, volume, open_ = result
@@ -430,7 +430,8 @@ def dip_star_rapor_gonder():
     dip_list = []
 
     for hisse in BIST_HISSELER:
-        sonuc = get_dip_star(hisse)
+        data = get_data(hisse)
+        sonuc = get_dip_star(hisse, data)
         if sonuc is not None:
             deg = f"+{sonuc['degisim']}%" if sonuc['degisim'] >= 0 else f"{sonuc['degisim']}%"
             dip_list.append(f"<b>{hisse}</b>  {sonuc['fiyat']}  ({deg})  RSI:{int(sonuc['rsi'])}")
@@ -451,16 +452,16 @@ def dip_star_rapor_gonder():
         send_telegram(mesaj[i:i+4000])
 
 def tara():
-    send_telegram(f"🔍 <b>BIST Tarama Başlıyor... (566 hisse) v{VERSION}</b>")
+    send_telegram(f"🔍 <b>BIST Tarama Başlıyor... (50 hisse test) v{VERSION}</b>")
 
     # Veri testi
     try:
         test = get_data("THYAO")
         if test is None:
-            send_telegram("⚠️ VERİ HATASI: borsapy veri çekemiyor! THYAO testi başarısız.")
+            send_telegram("⚠️ VERİ HATASI: borsapy veri çekemiyor!")
             return
         else:
-            send_telegram("✅ VERİ TESTİ BAŞARILI: borsapy çalışıyor.")
+            send_telegram("✅ VERİ TESTİ BAŞARILI")
     except Exception as e:
         send_telegram(f"⚠️ VERİ HATASI: {str(e)}")
         return
@@ -474,12 +475,20 @@ def tara():
     kirilim_list = []
     tarandi = 0
 
-    for hisse in BIST_HISSELER:
-        sonuc = get_signals(hisse)
+    # Her hisse için veriyi BİR KEZ çek, tüm stratejilere gönder
+    for hisse in BIST_HISSELER[:50]:  # Test için ilk 50 hisse
+        data = get_data(hisse)
+        if data is None:
+            continue
+
+        tarandi += 1
+        close = data[0]
+        deg = round(float((close.iloc[-1] - close.iloc[-2]) / close.iloc[-2] * 100), 2)
+        fiyat = round(float(close.iloc[-1]), 2)
+
+        sonuc = get_signals(hisse, data)
         if sonuc:
-            tarandi += 1
-            deg  = f"+{sonuc['degisim']}%" if sonuc['degisim'] >= 0 else f"{sonuc['degisim']}%"
-            bilgi = f"<b>{hisse}</b>  {sonuc['fiyat']}  ({deg})  RSI:{int(sonuc['rsi'])}"
+            bilgi = f"<b>{hisse}</b>  {sonuc['fiyat']}  ({'+' if sonuc['degisim']>=0 else ''}{sonuc['degisim']}%)  RSI:{int(sonuc['rsi'])}"
             if sonuc["ralli"]:
                 ralli_list.append(bilgi)
                 hafizaya_ekle(hisse, "RALLİ", sonuc['fiyat'])
@@ -496,16 +505,16 @@ def tara():
                 dip_list.append(bilgi)
                 hafizaya_ekle(hisse, "RSI DİP", sonuc['fiyat'])
 
-        gt = get_guclu_trend(hisse)
+        gt = get_guclu_trend(hisse, data)
         if gt:
-            deg = f"+{gt['degisim']}%" if gt['degisim'] >= 0 else f"{gt['degisim']}%"
-            guclu_list.append(f"<b>{hisse}</b>  {gt['fiyat']}  ({deg})  CCI:{int(gt['cci'])}  Hcm:{int(gt['vol_degisim'])}%")
+            deg_str = f"+{gt['degisim']}%" if gt['degisim'] >= 0 else f"{gt['degisim']}%"
+            guclu_list.append(f"<b>{hisse}</b>  {gt['fiyat']}  ({deg_str})  CCI:{int(gt['cci'])}  Hcm:{int(gt['vol_degisim'])}%")
             hafizaya_ekle(hisse, "GÜÇLÜ TREND", gt['fiyat'])
 
-        kr = get_kirilim(hisse)
+        kr = get_kirilim(hisse, data)
         if kr:
-            deg = f"+{kr['degisim']}%" if kr['degisim'] >= 0 else f"{kr['degisim']}%"
-            kirilim_list.append(f"<b>{hisse}</b>  {kr['fiyat']}  ({deg})  RSI:{int(kr['rsi'])}")
+            deg_str = f"+{kr['degisim']}%" if kr['degisim'] >= 0 else f"{kr['degisim']}%"
+            kirilim_list.append(f"<b>{hisse}</b>  {kr['fiyat']}  ({deg_str})  RSI:{int(kr['rsi'])}")
             hafizaya_ekle(hisse, "KIRILIM", kr['fiyat'])
 
     mesaj = ""
