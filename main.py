@@ -453,6 +453,18 @@ def dip_star_rapor_gonder():
 def tara():
     send_telegram(f"🔍 <b>BIST Tarama Başlıyor... (566 hisse) v{VERSION}</b>")
 
+    # Veri testi
+    try:
+        test = get_data("THYAO")
+        if test is None:
+            send_telegram("⚠️ VERİ HATASI: borsapy veri çekemiyor! THYAO testi başarısız.")
+            return
+        else:
+            send_telegram("✅ VERİ TESTİ BAŞARILI: borsapy çalışıyor.")
+    except Exception as e:
+        send_telegram(f"⚠️ VERİ HATASI: {str(e)}")
+        return
+
     al_list = []
     sat_list = []
     ralli_list = []
@@ -530,7 +542,7 @@ def tara():
     birikim_raporu_gonder()
 
 def tarama_loop():
-    time.sleep(300)  # 5 dakika bekle, deploy overlap geçsin
+    time.sleep(300)
     rapor_gonderildi = False
     dip_star_gonderildi = False
     son_tarama_saati = -1
