@@ -89,6 +89,15 @@ def send_telegram(message):
     except:
         pass
 
+def seans_acik():
+    tz = pytz.timezone("Europe/Istanbul")
+    now = datetime.now(tz)
+    if now.weekday() >= 5:
+        return False
+    baslangic = now.replace(hour=9, minute=30, second=0, microsecond=0)
+    bitis = now.replace(hour=18, minute=30, second=0, microsecond=0)
+    return baslangic <= now <= bitis
+
 def get_data(ticker):
     try:
         hisse = bp.Ticker(ticker)
@@ -217,22 +226,46 @@ def get_dip_star(ticker, data=None):
         p  = -2
         p2 = -3
 
-        dip_yakin   = float(close.iloc[i]) <= float(min_250.iloc[i]) * 1.20
-        rsi_donus   = float(rsi.iloc[p]) < 35 and float(rsi.iloc[i]) > float(rsi.iloc[p])
-        macd_donus  = (float(macd_hist.iloc[p2]) < float(macd_hist.iloc[p]) and
-                       float(macd_hist.iloc[p]) < float(macd_hist.iloc[i]) and
-                       float(macd_hist.iloc[i]) < 0)
-        hacim_artis = float(volume.iloc[i]) > float(vol_ort5.iloc[i]) * 1.5
-        engulfing   = bullish_engulfing(open_, close)
+        # Puanlama sistemi
+        puan = 0
+        puan_detay = []
 
-        if not (dip_yakin and rsi_donus and macd_donus and hacim_artis and engulfing):
+        # 1. Dip bölgesi
+        if float(close.iloc[i]) <= float(min_250.iloc[i]) * 1.20:
+            puan += 1
+            puan_detay.append("Dip")
+
+        # 2. RSI dönüş
+        if float(rsi.iloc[p]) < 40 and float(rsi.iloc[i]) > float(rsi.iloc[p]):
+            puan += 1
+            puan_detay.append("RSI↑")
+
+        # 3. MACD dönüş
+        if (float(macd_hist.iloc[p2]) < float(macd_hist.iloc[p]) and
+                float(macd_hist.iloc[p]) < float(macd_hist.iloc[i]) and
+                float(macd_hist.iloc[i]) < 0):
+            puan += 1
+            puan_detay.append("MACD↑")
+
+        # 4. Hacim artış
+        if float(volume.iloc[i]) > float(vol_ort5.iloc[i]) * 1.2:
+            puan += 1
+            puan_detay.append("Hacim↑")
+
+        # 5. Bullish Engulfing
+        if bullish_engulfing(open_, close):
+            puan += 1
+            puan_detay.append("Engulf")
+
+        if puan < 3:
             return None
 
         fiyat   = round(float(close.iloc[i]), 2)
         degisim = round(float((close.iloc[i] - close.iloc[p]) / close.iloc[p] * 100), 2)
         rsi_val = round(float(rsi.iloc[i]), 0)
 
-        return {"fiyat": fiyat, "degisim": degisim, "rsi": rsi_val}
+        return {"fiyat": fiyat, "degisim": degisim, "rsi": rsi_val,
+                "puan": puan, "detay": "+".join(puan_detay)}
     except:
         return None
 
@@ -300,11 +333,14 @@ def birikim_raporu_gonder():
     if not sinyal_hafiza:
         return
 
-    al_grup = {h: v for h, v in sinyal_hafiza.items()
-               if any(s in ["AL","RALLİ","BOT AL","RSI DİP","KIRILIM","GÜÇLÜ TREND"]
-                      for s in v["sinyaller"])}
+    AL_SINYALLER = {"AL", "RALLİ", "BOT AL", "RSI DİP", "KIRILIM", "GÜÇLÜ TREND"}
+
+    al_grup  = {h: v for h, v in sinyal_hafiza.items()
+                if any(s in AL_SINYALLER for s in v["sinyaller"])
+                and not any(s == "SAT" for s in v["sinyaller"])}
     sat_grup = {h: v for h, v in sinyal_hafiza.items()
-                if any(s == "SAT" for s in v["sinyaller"])}
+                if any(s == "SAT" for s in v["sinyaller"])
+                and not any(s in AL_SINYALLER for s in v["sinyaller"])}
 
     mesaj = f"📊 <b>GÜNLÜK BİRİKİM ({saat})</b>\n"
     mesaj += f"⏰ Seans kapanışına {kalan_saat}s {kalan_dk}dk kaldı\n"
@@ -325,7 +361,7 @@ def birikim_raporu_gonder():
                 for s in v["sinyaller"]:
                     sayac[s] = sayac.get(s, 0) + 1
                 detay = "+".join([f"{s}:{c}" for s, c in sayac.items()
-                                  if s in ["AL","RALLİ","BOT AL","RSI DİP","KIRILIM","GÜÇLÜ TREND"]])
+                                  if s in AL_SINYALLER])
                 parcalar.append(f"<b>{h}</b> {len(v['sinyaller'])}x({detay})")
             mesaj += " | ".join(parcalar) + "\n"
         if orta_al:
@@ -360,20 +396,32 @@ def gunluk_rapor_gonder():
         sinyal_hafiza = {}
         return
 
-    sirali = sorted(sinyal_hafiza.items(), key=lambda x: len(x[1]["sinyaller"]), reverse=True)
-    al_sirali  = [(h, v) for h, v in sirali
-                  if any(s in ["AL","RALLİ","BOT AL","RSI DİP","KIRILIM","GÜÇLÜ TREND"]
-                         for s in v["sinyaller"])]
-    sat_sirali = [(h, v) for h, v in sirali
-                  if any(s == "SAT" for s in v["sinyaller"])]
+    AL_SINYALLER = {"AL", "RALLİ", "BOT AL", "RSI DİP", "KIRILIM", "GÜÇLÜ TREND"}
+    SAT_SINYALLER = {"SAT"}
+
+    temiz_al  = {}
+    temiz_sat = {}
+    cakisan   = {}
+
+    for hisse, v in sinyal_hafiza.items():
+        al_sayisi  = sum(1 for s in v["sinyaller"] if s in AL_SINYALLER)
+        sat_sayisi = sum(1 for s in v["sinyaller"] if s in SAT_SINYALLER)
+
+        if al_sayisi > 0 and sat_sayisi > 0:
+            cakisan[hisse] = v
+        elif al_sayisi > 0:
+            temiz_al[hisse] = v
+        elif sat_sayisi > 0:
+            temiz_sat[hisse] = v
 
     mesaj = "📊 <b>GÜNLÜK SİNYAL RAPORU</b>\n\n"
 
-    if al_sirali:
+    if temiz_al:
         mesaj += "🟢 <b>AL GRUBU</b>\n"
-        guclu = [(h, v) for h, v in al_sirali if len(v["sinyaller"]) >= 3]
-        orta  = [(h, v) for h, v in al_sirali if len(v["sinyaller"]) == 2]
-        tek   = [(h, v) for h, v in al_sirali if len(v["sinyaller"]) == 1]
+        sirali = sorted(temiz_al.items(), key=lambda x: len(x[1]["sinyaller"]), reverse=True)
+        guclu = [(h, v) for h, v in sirali if len(v["sinyaller"]) >= 3]
+        orta  = [(h, v) for h, v in sirali if len(v["sinyaller"]) == 2]
+        tek   = [(h, v) for h, v in sirali if len(v["sinyaller"]) == 1]
 
         if guclu:
             mesaj += "🏆 <b>Güçlü (3+)</b>\n"
@@ -398,11 +446,12 @@ def gunluk_rapor_gonder():
             mesaj += "  ".join([f"<b>{h}</b>" for h, v in tek]) + "\n"
         mesaj += "\n"
 
-    if sat_sirali:
+    if temiz_sat:
         mesaj += "🔴 <b>SAT GRUBU</b>\n"
-        guclu = [(h, v) for h, v in sat_sirali if len(v["sinyaller"]) >= 3]
-        orta  = [(h, v) for h, v in sat_sirali if len(v["sinyaller"]) == 2]
-        tek   = [(h, v) for h, v in sat_sirali if len(v["sinyaller"]) == 1]
+        sirali = sorted(temiz_sat.items(), key=lambda x: len(x[1]["sinyaller"]), reverse=True)
+        guclu = [(h, v) for h, v in sirali if len(v["sinyaller"]) >= 3]
+        orta  = [(h, v) for h, v in sirali if len(v["sinyaller"]) == 2]
+        tek   = [(h, v) for h, v in sirali if len(v["sinyaller"]) == 1]
 
         if guclu:
             mesaj += "🏆 <b>Güçlü (3+)</b>\n"
@@ -417,8 +466,21 @@ def gunluk_rapor_gonder():
         if tek:
             mesaj += "📌 <b>Tek sinyal</b>\n"
             mesaj += "  ".join([f"<b>{h}</b>" for h, v in tek]) + "\n"
+        mesaj += "\n"
 
-    mesaj += f"\n─────────────────────\n📅 {len(sinyal_hafiza)} hisse sinyal verdi."
+    if cakisan:
+        mesaj += "⚠️ <b>ÇAKIŞAN SİNYAL (bekle)</b>\n"
+        sirali = sorted(cakisan.items(), key=lambda x: len(x[1]["sinyaller"]), reverse=True)
+        for h, v in sirali:
+            sayac = {}
+            for s in v["sinyaller"]:
+                sayac[s] = sayac.get(s, 0) + 1
+            detay = ", ".join([f"{s}:{c}" for s, c in sayac.items()])
+            mesaj += f"• <b>{h}</b>  {v['fiyat']}  ({detay})\n"
+        mesaj += "\n"
+
+    mesaj += f"─────────────────────\n"
+    mesaj += f"📅 {len(temiz_al)} AL | {len(temiz_sat)} SAT | {len(cakisan)} Çakışan"
 
     for i in range(0, len(mesaj), 4000):
         send_telegram(mesaj[i:i+4000])
@@ -427,26 +489,49 @@ def gunluk_rapor_gonder():
 
 def dip_star_rapor_gonder():
     send_telegram("🌟 <b>DİP STAR Taraması Başlıyor...</b>")
-    dip_list = []
+    dip_list_5 = []
+    dip_list_4 = []
+    dip_list_3 = []
 
     for hisse in BIST_HISSELER:
         data = get_data(hisse)
         sonuc = get_dip_star(hisse, data)
         if sonuc is not None:
             deg = f"+{sonuc['degisim']}%" if sonuc['degisim'] >= 0 else f"{sonuc['degisim']}%"
-            dip_list.append(f"<b>{hisse}</b>  {sonuc['fiyat']}  ({deg})  RSI:{int(sonuc['rsi'])}")
+            satir = f"<b>{hisse}</b>  {sonuc['fiyat']}  ({deg})  RSI:{int(sonuc['rsi'])}  [{sonuc['detay']}]"
+            if sonuc["puan"] == 5:
+                dip_list_5.append(satir)
+            elif sonuc["puan"] == 4:
+                dip_list_4.append(satir)
+            else:
+                dip_list_3.append(satir)
 
     mesaj = "🌟🚀 <b>DİP STAR RAPORU</b>\n"
-    mesaj += "─────────────────────\n"
-    mesaj += "<i>Dip bölgesinde Bullish Engulfing + RSI dönüş + MACD dönüş + Hacim artışı</i>\n\n"
+    mesaj += "─────────────────────\n\n"
 
-    if dip_list:
-        for h in dip_list:
+    if dip_list_5:
+        mesaj += "🌟🌟🌟 <b>MÜKEMMEL (5/5)</b>\n"
+        for h in dip_list_5:
             mesaj += f"⭐ {h}\n"
-    else:
+        mesaj += "\n"
+
+    if dip_list_4:
+        mesaj += "🌟🌟 <b>GÜÇLÜ (4/5)</b>\n"
+        for h in dip_list_4:
+            mesaj += f"⭐ {h}\n"
+        mesaj += "\n"
+
+    if dip_list_3:
+        mesaj += "🌟 <b>OLASI (3/5)</b>\n"
+        for h in dip_list_3:
+            mesaj += f"⭐ {h}\n"
+        mesaj += "\n"
+
+    if not dip_list_5 and not dip_list_4 and not dip_list_3:
         mesaj += "Bugün DİP STAR kriteri karşılayan hisse bulunamadı.\n"
 
-    mesaj += f"\n─────────────────────\n✅ {len(dip_list)} hisse DİP STAR kriterini karşıladı."
+    toplam = len(dip_list_5) + len(dip_list_4) + len(dip_list_3)
+    mesaj += f"─────────────────────\n✅ {toplam} hisse DİP STAR kriterini karşıladı."
 
     for i in range(0, len(mesaj), 4000):
         send_telegram(mesaj[i:i+4000])
@@ -567,10 +652,12 @@ def tarama_loop():
                 dip_star_gonderildi = False
                 son_tarama_saati = -1
 
-            if now.hour != son_tarama_saati:
-                tara()
-                son_tarama_saati = now.hour
-
+            # Seans kontrolü açık
+            if seans_acik():
+                if now.hour != son_tarama_saati:
+                    tara()
+                    son_tarama_saati = now.hour
+            
         except Exception as e:
             send_telegram(f"⚠️ Hata: {str(e)}")
 
