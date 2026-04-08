@@ -327,7 +327,7 @@ def birikim_raporu_gonder():
     if not sinyal_hafiza:
         return
 
-    AL_SINYALLER = {"AL", "RALLİ", "BOT AL", "RSI DİP", "KIRILIM", "GÜÇLÜ TREND"}
+    AL_SINYALLER = {"AL", "RALLİ", "BOT AL", "RSI DİP", "KIRILIM", "GÜÇLÜ TREND", "DİP STAR"}
 
     al_grup  = {h: v for h, v in sinyal_hafiza.items()
                 if any(s in AL_SINYALLER for s in v["sinyaller"])
@@ -390,7 +390,7 @@ def gunluk_rapor_gonder():
         sinyal_hafiza = {}
         return
 
-    AL_SINYALLER = {"AL", "RALLİ", "BOT AL", "RSI DİP", "KIRILIM", "GÜÇLÜ TREND"}
+    AL_SINYALLER = {"AL", "RALLİ", "BOT AL", "RSI DİP", "KIRILIM", "GÜÇLÜ TREND", "DİP STAR"}
 
     temiz_al  = {}
     temiz_sat = {}
@@ -464,7 +464,7 @@ def gunluk_rapor_gonder():
     if cakisan:
         mesaj += "⚠️ <b>ÇAKIŞAN SİNYAL (bekle)</b>\n"
         sirali = sorted(cakisan.items(), key=lambda x: len(x[1]["sinyaller"]), reverse=True)
-        for h, v in sirali:
+        for h, v in sirali[:10]:  # Max 10 çakışan
             sayac = {}
             for s in v["sinyaller"]:
                 sayac[s] = sayac.get(s, 0) + 1
@@ -508,13 +508,11 @@ def dip_star_rapor_gonder():
         for h in dip_list_5:
             mesaj += f"⭐ {h}\n"
         mesaj += "\n"
-
     if dip_list_4:
         mesaj += "🌟🌟 <b>GÜÇLÜ (4/5)</b>\n"
         for h in dip_list_4:
             mesaj += f"⭐ {h}\n"
         mesaj += "\n"
-
     if dip_list_3:
         mesaj += "🌟 <b>OLASI (3/5)</b>\n"
         for h in dip_list_3:
@@ -590,9 +588,8 @@ def tara():
             kirilim_list.append(f"<b>{hisse}</b>  {kr['fiyat']}  ({deg_str})  RSI:{int(kr['rsi'])}")
             hafizaya_ekle(hisse, "KIRILIM", kr['fiyat'])
 
-        # Gün içi DİP STAR kontrolü
         ds = get_dip_star(hisse, data)
-        if ds and ds["puan"] >= 4:  # Sadece güçlü sinyaller gün içi bildirim
+        if ds and ds["puan"] >= 4:
             deg_str = f"+{ds['degisim']}%" if ds['degisim'] >= 0 else f"{ds['degisim']}%"
             yildiz = "🌟🌟🌟" if ds["puan"] == 5 else "🌟🌟"
             dip_star_list.append(f"{yildiz} <b>{hisse}</b>  {ds['fiyat']}  ({deg_str})  RSI:{int(ds['rsi'])}  [{ds['detay']}]")
@@ -645,26 +642,28 @@ def tarama_loop():
             tz = pytz.timezone("Europe/Istanbul")
             now = datetime.now(tz)
 
-            # Sabah 09:30'da DİP STAR raporu
-            if now.weekday() < 5 and now.hour == 9 and now.minute >= 30 and not dip_star_gonderildi:
-                dip_star_rapor_gonder()
-                dip_star_gonderildi = True
-
-            # 17:00'da günlük sinyal raporu
-            if now.weekday() < 5 and now.hour == 17 and not rapor_gonderildi:
-                gunluk_rapor_gonder()
-                rapor_gonderildi = True
-
-            if now.hour == 0:
+            # Gece sıfırla
+            if now.hour == 0 and now.minute < 10:
                 rapor_gonderildi = False
                 dip_star_gonderildi = False
                 son_tarama_saati = -1
 
-            # Seans saatlerinde tarama
+            # Sabah 09:30 DİP STAR raporu
+            if now.weekday() < 5 and now.hour == 9 and now.minute >= 30 and not dip_star_gonderildi:
+                dip_star_rapor_gonder()
+                dip_star_gonderildi = True
+
+            # Seans saatlerinde saatlik tarama
             if seans_acik():
                 if now.hour != son_tarama_saati:
+                    son_tarama_saati = now.hour  # Önce işaretle, çift taramayı önle
                     tara()
-                    son_tarama_saati = now.hour
+
+                    # Tarama bitti — günlük rapor zamanı geçti mi?
+                    now = datetime.now(tz)
+                    if now.weekday() < 5 and now.hour >= 17 and not rapor_gonderildi:
+                        gunluk_rapor_gonder()
+                        rapor_gonderildi = True
 
         except Exception as e:
             send_telegram(f"⚠️ Hata: {str(e)}")
