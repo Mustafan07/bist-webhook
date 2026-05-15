@@ -1,7 +1,7 @@
 import os
 os.environ["NUMBA_DISABLE_JIT"] = "1"
 
-VERSION = "2026-04-08"
+VERSION = "2026-05-15"
 print(f"BOT BAŞLADI - Versiyon: {VERSION}")
 
 from flask import Flask, request
@@ -11,6 +11,10 @@ import pandas_ta as ta
 import borsapy as bp
 import threading
 import time
+import json
+import random
+import string
+import websocket
 from datetime import datetime
 import pytz
 
@@ -20,6 +24,12 @@ TELEGRAM_TOKEN = "8760124700:AAE3BqqIwXZ4xNVkdaDdtpdBEo7WYZg4lvY"
 CHAT_ID = "635329910"
 
 sinyal_hafiza = {}
+
+# Canlı izleme için global liste
+canli_izleme = {}        # {"THYAO": {"giris": 311.0, "son": 311.0}, ...}
+canli_izleme_lock = threading.Lock()
+ws_app = None
+ws_session = None
 
 BIST_HISSELER = [
     "A1CAP","A1YEN","ACSEL","ADEL","ADESE","ADGYO","AEFES","AFYON","AGESA","AGHOL",
@@ -80,6 +90,142 @@ BIST_HISSELER = [
     "YAPRK","YATAS","YAYLA","YEOTK","YESIL","YGGYO","YIGIT","YKBNK","YKSLN","YUNSA",
     "YYLGD","ZEDUR","ZERGY","ZGYO","ZOREN","ZRGYO"
 ]
+
+# ── WEBSOCKET CANLI İZLEME ─────────────────────────────────
+
+def ws_wrap(msg):
+    return f"~m~{len(msg)}~m~{msg}"
+
+def ws_build(method, params):
+    return ws_wrap(json.dumps({"m": method, "p": params}))
+
+def ws_gen_session():
+    return "qs_" + "".join(random.choices(string.ascii_lowercase, k=12))
+
+def ws_parse(raw):
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8")
+    pos, out = 0, []
+    while pos < len(raw):
+        if not raw[pos:].startswith("~m~"):
+            pos += 1
+            continue
+        pos += 3
+        end = raw.find("~m~", pos)
+        if end == -1:
+            break
+        length = int(raw[pos:end])
+        pos = end + 3
+        out.append(raw[pos:pos + length])
+        pos += length
+    return out
+
+def ws_on_open(ws):
+    global ws_session
+    ws_session = ws_gen_session()
+    ws.send(ws_build("set_auth_token", ["unauthorized_user_token"]))
+    ws.send(ws_build("quote_create_session", [ws_session]))
+    ws.send(ws_build("quote_set_fields", [ws_session, "lp", "chp", "volume"]))
+    with canli_izleme_lock:
+        semboller = [f"BIST:{h}" for h in canli_izleme.keys()]
+    if semboller:
+        ws.send(ws_build("quote_add_symbols", [ws_session, *semboller]))
+
+def ws_on_message(ws, raw):
+    for content in ws_parse(raw):
+        if content.startswith("~h~"):
+            ws.send(ws_wrap(content))
+            continue
+        try:
+            msg = json.loads(content)
+        except:
+            continue
+        if msg.get("m") == "qsd":
+            data = msg["p"][1]
+            symbol = data.get("n", "").replace("BIST:", "")
+            v = data.get("v", {})
+            if "lp" in v and symbol:
+                fiyat = float(v["lp"])
+                chp = float(v.get("chp", 0))
+                vol = int(v.get("volume", 0))
+                canli_fiyat_kontrol(symbol, fiyat, chp, vol)
+
+def ws_on_error(ws, error):
+    pass
+
+def ws_on_close(ws, *args):
+    pass
+
+def canli_fiyat_kontrol(hisse, fiyat, chp, vol):
+    with canli_izleme_lock:
+        if hisse not in canli_izleme:
+            return
+        bilgi = canli_izleme[hisse]
+        giris = bilgi.get("giris", fiyat)
+        son_bildirim = bilgi.get("son_bildirim", 0)
+        bilgi["son"] = fiyat
+
+    degisim = round((fiyat - giris) / giris * 100, 2) if giris > 0 else 0
+
+    # Her %2 harekette bildir, aynı yönde max 1 bildirim / 30 dk
+    simdi = time.time()
+    if abs(degisim) >= 2.0 and (simdi - son_bildirim) > 1800:
+        emoji = "🚀" if degisim > 0 else "🔻"
+        mesaj = (f"{emoji} <b>CANLI İZLEME: {hisse}</b>\n"
+                 f"💰 Fiyat: {fiyat}\n"
+                 f"📊 Giriş'ten: {'+' if degisim>=0 else ''}{degisim}%\n"
+                 f"📈 Günlük: {'+' if chp>=0 else ''}{chp}%\n"
+                 f"🔢 Hacim: {vol:,}")
+        send_telegram(mesaj)
+        with canli_izleme_lock:
+            canli_izleme[hisse]["son_bildirim"] = simdi
+
+def canli_izleme_baslat(hisse_listesi):
+    """DİP STAR hisselerini WebSocket ile izlemeye al."""
+    global ws_app, canli_izleme
+
+    with canli_izleme_lock:
+        canli_izleme = {}
+        for h in hisse_listesi:
+            canli_izleme[h] = {"giris": 0, "son": 0, "son_bildirim": 0}
+
+    if not hisse_listesi:
+        return
+
+    sembol_str = ", ".join(hisse_listesi)
+    send_telegram(f"👁 <b>CANLI İZLEME BAŞLADI</b>\n{sembol_str}")
+
+    def ws_thread():
+        global ws_app
+        while True:
+            try:
+                ws_app = websocket.WebSocketApp(
+                    "wss://data.tradingview.com/socket.io/websocket?type=chart",
+                    on_open=ws_on_open,
+                    on_message=ws_on_message,
+                    on_error=ws_on_error,
+                    on_close=ws_on_close,
+                    header={"Origin": "https://www.tradingview.com"},
+                )
+                ws_app.run_forever(ping_interval=0, skip_utf8_validation=True)
+            except:
+                pass
+            time.sleep(30)  # bağlantı kopunca 30 sn bekle yeniden bağlan
+
+    t = threading.Thread(target=ws_thread, daemon=True)
+    t.start()
+
+def canli_izleme_durdur():
+    global ws_app, canli_izleme
+    with canli_izleme_lock:
+        canli_izleme = {}
+    if ws_app:
+        try:
+            ws_app.close()
+        except:
+            pass
+
+# ──────────────────────────────────────────────────────────
 
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -318,7 +464,6 @@ def birikim_raporu_gonder():
     tz = pytz.timezone("Europe/Istanbul")
     now = datetime.now(tz)
     saat = now.strftime("%H:%M")
-
     bitis = now.replace(hour=18, minute=30, second=0, microsecond=0)
     kalan = bitis - now
     kalan_saat = max(0, int(kalan.total_seconds() // 3600))
@@ -354,8 +499,7 @@ def birikim_raporu_gonder():
                 sayac = {}
                 for s in v["sinyaller"]:
                     sayac[s] = sayac.get(s, 0) + 1
-                detay = "+".join([f"{s}:{c}" for s, c in sayac.items()
-                                  if s in AL_SINYALLER])
+                detay = "+".join([f"{s}:{c}" for s, c in sayac.items() if s in AL_SINYALLER])
                 parcalar.append(f"<b>{h}</b> {len(v['sinyaller'])}x({detay})")
             mesaj += " | ".join(parcalar) + "\n"
         if orta_al:
@@ -391,7 +535,6 @@ def gunluk_rapor_gonder():
         return
 
     AL_SINYALLER = {"AL", "RALLİ", "BOT AL", "RSI DİP", "KIRILIM", "GÜÇLÜ TREND", "DİP STAR"}
-
     temiz_al  = {}
     temiz_sat = {}
     cakisan   = {}
@@ -399,7 +542,6 @@ def gunluk_rapor_gonder():
     for hisse, v in sinyal_hafiza.items():
         al_sayisi  = sum(1 for s in v["sinyaller"] if s in AL_SINYALLER)
         sat_sayisi = sum(1 for s in v["sinyaller"] if s == "SAT")
-
         if al_sayisi > 0 and sat_sayisi > 0:
             cakisan[hisse] = v
         elif al_sayisi > 0:
@@ -415,7 +557,6 @@ def gunluk_rapor_gonder():
         guclu = [(h, v) for h, v in sirali if len(v["sinyaller"]) >= 3]
         orta  = [(h, v) for h, v in sirali if len(v["sinyaller"]) == 2]
         tek   = [(h, v) for h, v in sirali if len(v["sinyaller"]) == 1]
-
         if guclu:
             mesaj += "🏆 <b>Güçlü (3+)</b>\n"
             for h, v in guclu:
@@ -445,7 +586,6 @@ def gunluk_rapor_gonder():
         guclu = [(h, v) for h, v in sirali if len(v["sinyaller"]) >= 3]
         orta  = [(h, v) for h, v in sirali if len(v["sinyaller"]) == 2]
         tek   = [(h, v) for h, v in sirali if len(v["sinyaller"]) == 1]
-
         if guclu:
             mesaj += "🏆 <b>Güçlü (3+)</b>\n"
             for h, v in guclu:
@@ -464,7 +604,7 @@ def gunluk_rapor_gonder():
     if cakisan:
         mesaj += "⚠️ <b>ÇAKIŞAN SİNYAL (bekle)</b>\n"
         sirali = sorted(cakisan.items(), key=lambda x: len(x[1]["sinyaller"]), reverse=True)
-        for h, v in sirali[:10]:  # Max 10 çakışan
+        for h, v in sirali[:10]:
             sayac = {}
             for s in v["sinyaller"]:
                 sayac[s] = sayac.get(s, 0) + 1
@@ -485,6 +625,7 @@ def dip_star_rapor_gonder():
     dip_list_5 = []
     dip_list_4 = []
     dip_list_3 = []
+    canli_liste = []  # 4/5 ve 5/5 hisseler canlı izlemeye alınacak
 
     for hisse in BIST_HISSELER:
         data = get_data(hisse)
@@ -494,8 +635,10 @@ def dip_star_rapor_gonder():
             satir = f"<b>{hisse}</b>  {sonuc['fiyat']}  ({deg})  RSI:{int(sonuc['rsi'])}  [{sonuc['detay']}]"
             if sonuc["puan"] == 5:
                 dip_list_5.append(satir)
+                canli_liste.append(hisse)
             elif sonuc["puan"] == 4:
                 dip_list_4.append(satir)
+                canli_liste.append(hisse)
             else:
                 dip_list_3.append(satir)
 
@@ -528,6 +671,10 @@ def dip_star_rapor_gonder():
     for i in range(0, len(mesaj), 4000):
         send_telegram(mesaj[i:i+4000])
 
+    # 4/5 ve 5/5 hisseleri canlı izlemeye al
+    if canli_liste:
+        canli_izleme_baslat(canli_liste)
+
 def tara():
     send_telegram(f"🔍 <b>BIST Tarama Başlıyor... (566 hisse) v{VERSION}</b>")
 
@@ -554,7 +701,6 @@ def tara():
         data = get_data(hisse)
         if data is None:
             continue
-
         tarandi += 1
 
         sonuc = get_signals(hisse, data)
@@ -597,29 +743,21 @@ def tara():
 
     mesaj = ""
     if al_list:
-        mesaj += f"✅ <b>AL ({len(al_list)} hisse)</b>\n"
-        mesaj += "\n".join([f"• {h}" for h in al_list]) + "\n\n"
+        mesaj += f"✅ <b>AL ({len(al_list)} hisse)</b>\n" + "\n".join([f"• {h}" for h in al_list]) + "\n\n"
     if ralli_list:
-        mesaj += f"🚀 <b>RALLİ ({len(ralli_list)} hisse)</b>\n"
-        mesaj += "\n".join([f"• {h}" for h in ralli_list]) + "\n\n"
+        mesaj += f"🚀 <b>RALLİ ({len(ralli_list)} hisse)</b>\n" + "\n".join([f"• {h}" for h in ralli_list]) + "\n\n"
     if sat_list:
-        mesaj += f"🔴 <b>SAT ({len(sat_list)} hisse)</b>\n"
-        mesaj += "\n".join([f"• {h}" for h in sat_list]) + "\n\n"
+        mesaj += f"🔴 <b>SAT ({len(sat_list)} hisse)</b>\n" + "\n".join([f"• {h}" for h in sat_list]) + "\n\n"
     if bot_list:
-        mesaj += f"⬆️ <b>BOT AL ({len(bot_list)} hisse)</b>\n"
-        mesaj += "\n".join([f"• {h}" for h in bot_list]) + "\n\n"
+        mesaj += f"⬆️ <b>BOT AL ({len(bot_list)} hisse)</b>\n" + "\n".join([f"• {h}" for h in bot_list]) + "\n\n"
     if dip_list:
-        mesaj += f"🎯 <b>RSI DİP ({len(dip_list)} hisse)</b>\n"
-        mesaj += "\n".join([f"• {h}" for h in dip_list]) + "\n\n"
+        mesaj += f"🎯 <b>RSI DİP ({len(dip_list)} hisse)</b>\n" + "\n".join([f"• {h}" for h in dip_list]) + "\n\n"
     if guclu_list:
-        mesaj += f"💪 <b>GÜÇLÜ TREND ({len(guclu_list)} hisse)</b>\n"
-        mesaj += "\n".join([f"• {h}" for h in guclu_list]) + "\n\n"
+        mesaj += f"💪 <b>GÜÇLÜ TREND ({len(guclu_list)} hisse)</b>\n" + "\n".join([f"• {h}" for h in guclu_list]) + "\n\n"
     if kirilim_list:
-        mesaj += f"🔥 <b>KIRILIM ({len(kirilim_list)} hisse)</b>\n"
-        mesaj += "\n".join([f"• {h}" for h in kirilim_list]) + "\n\n"
+        mesaj += f"🔥 <b>KIRILIM ({len(kirilim_list)} hisse)</b>\n" + "\n".join([f"• {h}" for h in kirilim_list]) + "\n\n"
     if dip_star_list:
-        mesaj += f"🌟 <b>DİP STAR ({len(dip_star_list)} hisse)</b>\n"
-        mesaj += "\n".join([f"• {h}" for h in dip_star_list]) + "\n\n"
+        mesaj += f"🌟 <b>DİP STAR ({len(dip_star_list)} hisse)</b>\n" + "\n".join([f"• {h}" for h in dip_star_list]) + "\n\n"
 
     if tarandi == 0:
         mesaj = "⚠️ Hiç veri çekilemedi.\n\n"
@@ -642,33 +780,44 @@ def tarama_loop():
             tz = pytz.timezone("Europe/Istanbul")
             now = datetime.now(tz)
 
-            # Gece sıfırla
             if now.hour == 0 and now.minute < 10:
                 rapor_gonderildi = False
                 dip_star_gonderildi = False
                 son_tarama_saati = -1
+                canli_izleme_durdur()
 
-            # Sabah 09:30 DİP STAR raporu
             if now.weekday() < 5 and now.hour == 9 and now.minute >= 30 and not dip_star_gonderildi:
                 dip_star_rapor_gonder()
                 dip_star_gonderildi = True
 
-            # Seans saatlerinde saatlik tarama
             if seans_acik():
                 if now.hour != son_tarama_saati:
-                    son_tarama_saati = now.hour  # Önce işaretle, çift taramayı önle
+                    son_tarama_saati = now.hour
                     tara()
-
-                    # Tarama bitti — günlük rapor zamanı geçti mi?
                     now = datetime.now(tz)
                     if now.weekday() < 5 and now.hour >= 17 and not rapor_gonderildi:
                         gunluk_rapor_gonder()
                         rapor_gonderildi = True
 
+            # Seans kapandıysa WebSocket'i durdur
+            if not seans_acik():
+                canli_izleme_durdur()
+
         except Exception as e:
             send_telegram(f"⚠️ Hata: {str(e)}")
 
         time.sleep(600)
+
+# ── WATCHDOG ──────────────────────────────────────────────
+def watchdog(thread_ref):
+    while True:
+        time.sleep(900)
+        if not thread_ref[0].is_alive():
+            send_telegram("⚠️ <b>WATCHDOG:</b> Tarama thread öldü! Yeniden başlatılıyor...")
+            yeni = threading.Thread(target=tarama_loop, daemon=True)
+            yeni.start()
+            thread_ref[0] = yeni
+# ──────────────────────────────────────────────────────────
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -689,6 +838,11 @@ def index():
     return "BIST ZKN Webhook Çalışıyor ✅"
 
 if __name__ == "__main__":
-    t = threading.Thread(target=tarama_loop, daemon=True)
-    t.start()
+    tarama_thread = threading.Thread(target=tarama_loop, daemon=True)
+    tarama_thread.start()
+
+    thread_ref = [tarama_thread]
+    w = threading.Thread(target=watchdog, args=(thread_ref,), daemon=True)
+    w.start()
+
     app.run(host="0.0.0.0", port=8080)
